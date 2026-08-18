@@ -1,0 +1,36 @@
+{
+  "name": "emissor-dce",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node --test tests/*.test.mjs",
+    "check": "npm run test && npm run build"
+  },
+  "dependencies": {
+    "@netlify/identity": "^2.0.0",
+    "@xmldom/xmldom": "^0.9.11",
+    "bwip-js": "^4.11.3",
+    "fast-xml-parser": "^5.11.0",
+    "node-forge": "^1.4.0",
+    "papaparse": "^5.6.0",
+    "pdf-lib": "^1.17.1",
+    "qrcode": "^1.5.4",
+    "xml-crypto": "^6.1.2"
+  },
+  "devDependencies": {
+    "@netlify/functions": "^6.0.0",
+    "@netlify/vite-plugin": "^2.12.9",
+    "vite": "^8.2.1"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true,
+    "sharp@0.34.5": true
+  }
+}

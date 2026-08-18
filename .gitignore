@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.netlify/
+.env
+.env.*
+!.env.example
+*.log
+*.pfx
+*.p12
+*.pem
+*.key
+output/
