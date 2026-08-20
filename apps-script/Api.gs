@@ -5,7 +5,7 @@ function doGet() {
 function doPost(event) {
   try {
     const request = safeJsonParse_(event && event.postData && event.postData.contents, null);
-    if (!request) throw new Error('Requisição JSON inválida.');
+    if (!request) throw new Error('Requisicao JSON invalida.');
     verifyApiToken_(request.token);
     const user = ensureUser_(request.user || {});
     const action = String(request.action || '');
@@ -25,11 +25,18 @@ function doPost(event) {
       'batch.saveResults': function() { return saveBatchResults_(user.id, request.payload || {}); },
       'dce.list': function() { return listDce_(user.id, request.payload || {}); },
       'dce.recordEvent': function() { return recordDceEvent_(user.id, request.payload || {}); },
+      'campaign.upsert': function() { return upsertCampaign_(user.id, request.payload || {}); },
+      'campaign.get': function() { return getCampaign_(user.id, request.payload || {}); },
+      'campaigns.list': function() { return listCampaigns_(user.id); },
+      'campaign.user.add': function() { return addCampaignUser_(user.id, request.payload || {}); },
+      'operation.record': function() { return recordOperationEvent_(user.id, request.payload || {}); },
+      'operations.list': function() { return listOperationEvents_(user.id, request.payload || {}); },
+      'dashboard.daily': function() { return getDailySummary_(user.id, request.payload || {}); },
       'file.get': function() { return readOwnedXmlFile_(user.id, request.payload && request.payload.fileId); }
     };
-    if (!handlers[action]) throw new Error('Ação não suportada.');
+    if (!handlers[action]) throw new Error('Acao nao suportada.');
     const data = handlers[action]();
-    log_(user.id, action, 'INFO', 'Operação concluída', {});
+    log_(user.id, action, 'INFO', 'Operacao concluida', {});
     return jsonOutput_({ ok: true, data: data });
   } catch (error) {
     const message = String(error && error.message || error || 'Erro inesperado').slice(0, 800);
@@ -39,8 +46,8 @@ function doPost(event) {
 
 function verifyApiToken_(provided) {
   const expected = getScriptProperties_().getProperty(DCE_CONFIG.PROPERTY_API_TOKEN);
-  if (!expected) throw new Error('Token da API não configurado. Execute setApiToken().');
-  if (String(provided || '') !== expected) throw new Error('Acesso não autorizado.');
+  if (!expected) throw new Error('Token da API nao configurado. Execute setApiToken().');
+  if (String(provided || '') !== expected) throw new Error('Acesso nao autorizado.');
 }
 
 function systemHealth_(user) {
