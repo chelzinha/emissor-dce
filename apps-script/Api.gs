@@ -38,6 +38,7 @@ function doPost(event) {
       'cleaning.process': function() { return processCleaningBatch_(user.id, request.payload || {}); },
       'portal.export': function() { return exportPortalPostal_(user.id, request.payload || {}); },
       'portal.exports.list': function() { return listPortalExports_(user.id, request.payload || {}); },
+      'portal.export.file': function() { return readPortalExportFile_(user.id, request.payload || {}); },
       'portalReturn.start': function() { return startPortalReturn_(user.id, request.payload || {}); },
       'portalReturn.append': function() { return appendPortalReturnObjects_(user.id, request.payload || {}); },
       'portalReturn.finish': function() { return finishPortalReturn_(user.id, request.payload || {}); },
