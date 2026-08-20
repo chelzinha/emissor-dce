@@ -1,6 +1,6 @@
 {
   "name": "emissor-dce",
-  "version": "0.3.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -13,17 +13,12 @@
   "dependencies": {
     "@netlify/identity": "^2.0.0",
     "@xmldom/xmldom": "^0.9.11",
-    "@zxing/library": "^0.21.3",
     "bwip-js": "^4.11.3",
     "fast-xml-parser": "^5.11.0",
-    "jsbarcode": "^3.12.1",
-    "jspdf": "^3.0.3",
     "node-forge": "^1.4.0",
     "papaparse": "^5.6.0",
     "pdf-lib": "^1.17.1",
-    "pdfjs-dist": "^5.4.149",
     "qrcode": "^1.5.4",
-    "xlsx": "^0.18.5",
     "xml-crypto": "^6.1.2"
   },
   "devDependencies": {
