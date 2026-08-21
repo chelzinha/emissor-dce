@@ -11,6 +11,9 @@ import {
   servicePresentation,
 } from "../src/label-production.js";
 
+const accessKey = "1".repeat(44);
+const qrCode = `https://www.fazenda.pr.gov.br/dce/qrcode?chDCe=${accessKey}&tpAmb=2`;
+
 test("preserva as medidas do formato 10x15 do gerador local", () => {
   const format = LABEL_FORMATS["10x15"];
   assert.equal(format.widthMm, 100);
@@ -38,10 +41,13 @@ test("declaracao simplificada nao exige chave ou protocolo de DC-e", () => {
   assert.equal(descriptor.accessKey, "");
 });
 
-test("modo DC-e so fica autorizado com chave de 44 digitos e protocolo", () => {
-  const pending = declarationDescriptor(DOCUMENT_MODES.DCE, { accessKey: "1".repeat(44) });
+test("modo DC-e separa autorizacao fiscal da elegibilidade do QR Code", () => {
+  const pending = declarationDescriptor(DOCUMENT_MODES.DCE, { accessKey });
   assert.equal(pending.authorized, false);
-  const ready = declarationDescriptor(DOCUMENT_MODES.DCE, { accessKey: "1".repeat(44), protocol: "123456789" });
+  const authorizedWithoutQr = declarationDescriptor(DOCUMENT_MODES.DCE, { accessKey, protocol: "123456789" });
+  assert.equal(authorizedWithoutQr.authorized, true);
+  assert.equal(authorizedWithoutQr.qrEligible, false);
+  const ready = declarationDescriptor(DOCUMENT_MODES.DCE, { accessKey, protocol: "123456789", qrCode });
   assert.equal(ready.authorized, true);
   assert.equal(ready.qrEligible, true);
 });
@@ -58,7 +64,7 @@ test("producao simplificada exige Data Matrix valido e etiqueta teste aprovada",
 test("producao DC-e bloqueia objeto ainda sem autorizacao", () => {
   const row = {
     trackingCode: "OY855182534BR", service: "SEDEX", matrix: { status: "AUTO_VERIFIED" },
-    accessKey: "1".repeat(44), protocol: "",
+    accessKey, protocol: "",
   };
   const result = productionReadiness({ row, documentMode: DOCUMENT_MODES.DCE, testLabelApproved: true });
   assert.equal(result.ready, false);
@@ -86,10 +92,10 @@ test("modelo unificado preserva Data Matrix, destinatario e modalidade documenta
   assert.equal(model.declaration.mode, DOCUMENT_MODES.SIMPLIFIED);
 });
 
-test("resumo distingue documentos simplificados de DC-es autorizadas", () => {
+test("resumo distingue documentos simplificados de DC-es prontas para DACE", () => {
   const rows = [
     { service: "PAC", matrix: { status: "AUTO_VERIFIED" } },
-    { service: "SEDEX", matrix: { status: "AUTO_VERIFIED" }, accessKey: "1".repeat(44), protocol: "123" },
+    { service: "SEDEX", matrix: { status: "AUTO_VERIFIED" }, accessKey, protocol: "123", qrCode },
   ];
   const simple = productionSummary(rows, DOCUMENT_MODES.SIMPLIFIED);
   assert.equal(simple.documentsReady, 2);
