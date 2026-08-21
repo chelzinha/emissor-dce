@@ -56,3 +56,5 @@ export async function createPostingProtocolPdf(model, options = {}) {
   pdf.setTitle("Protocolo de Postagem a Vista");
   return pdf.save();
 }
+
+export const generatePostingProtocolPdf = createPostingProtocolPdf;
