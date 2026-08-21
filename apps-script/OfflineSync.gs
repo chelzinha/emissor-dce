@@ -187,6 +187,7 @@ function offlineSyncSanitizeEvents_(events, totalByService, requestedCodes) {
   const source = Array.isArray(events) ? events : [];
   if (source.length > 50) throw new Error('Quantidade de eventos offline acima do limite.');
   const ids = {};
+  const generatedServices = {};
   const printedServices = {};
   return source.map(function(event) {
     const id = offlineSyncText_(event.id);
@@ -199,13 +200,18 @@ function offlineSyncSanitizeEvents_(events, totalByService, requestedCodes) {
     const note = offlineSyncText_(event.note).slice(0, 800);
     if (!id || ids[id]) throw new Error('Evento offline sem ID unico.');
     ids[id] = true;
-    if (['LABEL_TEST_APPROVED', 'LABEL_PRINTED', 'LABEL_HANDOFF'].indexOf(type) === -1) throw new Error('Tipo de evento offline invalido.');
+    if (['LABEL_TEST_APPROVED', 'LABEL_GENERATED', 'LABEL_PRINTED', 'LABEL_HANDOFF'].indexOf(type) === -1) throw new Error('Tipo de evento offline invalido.');
     if (['PAC', 'SEDEX'].indexOf(service) === -1) throw new Error('Servico de evento offline invalido.');
     if (!Number.isInteger(quantity) || quantity < 1 || quantity > Number(totalByService[service] || 0)) throw new Error('Quantidade de evento offline invalida.');
     if (!occurredAt || isNaN(Date.parse(occurredAt))) throw new Error('Data de evento offline invalida.');
     if (type === 'LABEL_TEST_APPROVED') {
       if (!offlineSyncTrackingOk_(trackingCode) || !requestedCodes[trackingCode]) throw new Error('SRO de teste offline invalido.');
       if (requestedCodes[trackingCode] !== service) throw new Error('Servico do teste offline divergente.');
+    }
+    if (type === 'LABEL_GENERATED') {
+      if (generatedServices[service]) throw new Error('Mais de um evento de geracao offline para ' + service + '.');
+      generatedServices[service] = true;
+      if (quantity !== Number(totalByService[service] || 0)) throw new Error('Geracao offline precisa representar o total integral de ' + service + '.');
     }
     if (type === 'LABEL_PRINTED') {
       if (printedServices[service]) throw new Error('Mais de um evento de impressao offline para ' + service + '.');
@@ -433,15 +439,7 @@ function offlineSyncCreateConnectedBatch_(userId, sync) {
     occurredAt: occurredAt,
     metadata: { origin: 'OFFLINE_CONTINGENCY', localBatchId: String(sync.LOCAL_BATCH_ID), matrix: matrixSummary }
   });
-  ['PAC', 'SEDEX'].forEach(function(service) {
-    const quantity = service === 'PAC' ? Number(sync.PAC || 0) : Number(sync.SEDEX || 0);
-    if (!quantity) return;
-    recordOperationEvent_(userId, {
-      campaignId: campaignId, type: 'LABEL_GENERATED', quantity: quantity, service: service,
-      sourceType: 'OFFLINE_SYNC', sourceId: String(sync.ID), idempotencyKey: 'offline-label-generated:' + String(sync.LOCAL_BATCH_ID) + ':' + service,
-      occurredAt: occurredAt, metadata: { origin: 'OFFLINE_CONTINGENCY' }
-    });
-  });
+
 
   const prepared = prepareProductionBatch_(userId, {
     campaignId: campaignId,
@@ -466,7 +464,15 @@ function offlineSyncReplayEvents_(userId, sync) {
   const handoffEvents = [];
 
   events.forEach(function(event) {
-    if (event.type === 'LABEL_TEST_APPROVED') {
+    if (event.type === 'LABEL_GENERATED') {
+      recordOperationEvent_(userId, {
+        campaignId: campaignId, type: 'LABEL_GENERATED', service: event.service, quantity: Number(event.quantity || 0),
+        sourceType: 'PRODUCTION_BATCH', sourceId: productionBatchId,
+        idempotencyKey: 'label-generated:' + productionBatchId + ':' + event.service,
+        occurredAt: event.occurredAt,
+        metadata: { origin: 'OFFLINE_CONTINGENCY', localEventId: event.id, localBatchId: String(sync.LOCAL_BATCH_ID), completeBatchPdf: true }
+      });
+    } else if (event.type === 'LABEL_TEST_APPROVED') {
       recordOperationEvent_(userId, {
         campaignId: campaignId, type: 'LABEL_TEST_APPROVED', service: event.service, quantity: 1,
         sourceType: 'PRODUCTION_BATCH', sourceId: productionBatchId,

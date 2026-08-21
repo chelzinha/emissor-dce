@@ -113,3 +113,24 @@ test('parser atualiza manifesto v2 legado para v3 sem inventar eventos', () => {
   assert.equal(parsed.version, 3);
   assert.deepEqual(parsed.operationEvents, []);
 });
+
+
+test('evento LABEL_GENERATED offline é opcional, mas quando existe precisa representar o serviço inteiro', () => {
+  const manifest = validManifest();
+  manifest.operationEvents = [
+    { id: 'g1', type: 'LABEL_GENERATED', service: 'PAC', quantity: 1, occurredAt: '2026-08-21T02:00:00-03:00' },
+    { id: 'g2', type: 'LABEL_GENERATED', service: 'SEDEX', quantity: 1, occurredAt: '2026-08-21T02:00:00-03:00' },
+  ];
+  const ok = validateOfflineManifest(manifest);
+  assert.equal(ok.valid, true);
+  assert.deepEqual(ok.summary.generated, { PAC: 1, SEDEX: 1 });
+
+  manifest.summary.pac = 2;
+  manifest.summary.total = 3;
+  manifest.objects.push(object('CC123456789BR', 'PAC'));
+  manifest.volumes[0].trackingCodes.push('CC123456789BR');
+  manifest.volumes[0].quantity = 2;
+  const blocked = validateOfflineManifest(manifest);
+  assert.equal(blocked.valid, false);
+  assert.ok(blocked.problems.includes('GERACAO_PARCIAL_NAO_PERMITIDA:PAC'));
+});

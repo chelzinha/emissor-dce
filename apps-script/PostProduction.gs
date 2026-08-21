@@ -95,6 +95,41 @@ function approveProductionLabelTest_(userId, payload) {
   return { productionBatchId: productionBatchId, service: service, approved: true };
 }
 
+function confirmProductionGeneration_(userId, payload) {
+  const campaignId = String(payload.campaignId || '');
+  const productionBatchId = String(payload.productionBatchId || '');
+  requireCampaignAccess_(campaignId, userId, ['AGENCY_ADMIN']);
+  const batch = postProductionBatch_(campaignId, productionBatchId);
+  if (!batch) throw new Error('Lote de producao nao encontrado.');
+  const objects = postProductionObjects_(campaignId, productionBatchId);
+  const quantity = Number(payload.quantity || 0);
+  if (!objects.length || objects.length !== Number(batch.TOTAL || 0)) {
+    throw new Error('Quantidade de objetos do lote esta divergente.');
+  }
+  if (quantity !== objects.length) {
+    throw new Error('A geracao deve corresponder ao lote completo: ' + objects.length + ' etiquetas.');
+  }
+  const required = postProductionServices_(objects);
+  const approved = labelTestApprovalServices_(campaignId, productionBatchId);
+  if (!required.every(function(service) { return approved[service]; })) {
+    throw new Error('Existem etiquetas de teste pendentes.');
+  }
+  const events = required.map(function(service) {
+    const serviceQuantity = requiredServiceQuantity_(batch, service);
+    return publicOperationEvent_(recordOperationEvent_(userId, {
+      campaignId: campaignId,
+      type: 'LABEL_GENERATED',
+      quantity: serviceQuantity,
+      service: service,
+      sourceType: 'PRODUCTION_BATCH',
+      sourceId: productionBatchId,
+      idempotencyKey: 'label-generated:' + productionBatchId + ':' + service,
+      metadata: { completeBatchPdf: true, totalBatchLabels: objects.length }
+    }));
+  });
+  return { productionBatchId: productionBatchId, quantity: objects.length, events: events };
+}
+
 function confirmProductionPrint_(userId, payload) {
   const campaignId = String(payload.campaignId || '');
   const productionBatchId = String(payload.productionBatchId || '');

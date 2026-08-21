@@ -133,18 +133,6 @@ function finishPortalReturnStrict_(userId, payload) {
     idempotencyKey: 'portal-return:' + portalReturnId,
     metadata: { pac: pac, sedex: sedex, invalid: invalid, matrix: matrixSummary }
   });
-  if (!invalid && pac) recordOperationEvent_(userId, {
-    campaignId: campaignId, type: 'LABEL_GENERATED', quantity: pac, service: 'PAC',
-    sourceType: 'PORTAL_RETURN', sourceId: portalReturnId,
-    idempotencyKey: 'portal-return-labels-pac:' + portalReturnId,
-    metadata: { origin: 'PORTAL_POSTAL' }
-  });
-  if (!invalid && sedex) recordOperationEvent_(userId, {
-    campaignId: campaignId, type: 'LABEL_GENERATED', quantity: sedex, service: 'SEDEX',
-    sourceType: 'PORTAL_RETURN', sourceId: portalReturnId,
-    idempotencyKey: 'portal-return-labels-sedex:' + portalReturnId,
-    metadata: { origin: 'PORTAL_POSTAL' }
-  });
   return {
     id: portalReturnId, status: status, total: rows.length, pac: pac, sedex: sedex,
     invalid: invalid, matrix: matrixSummary

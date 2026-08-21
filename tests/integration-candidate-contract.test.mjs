@@ -15,12 +15,13 @@ const vite = read('vite.config.js');
 const entry = read('eleicoes.html');
 const strict = read('apps-script','StrictCompatibility.gs');
 const postProduction = read('apps-script','PostProduction.gs');
+const offlineSyncBackend = read('apps-script','OfflineSync.gs');
 
 test('dispatcher consolidado contém ações críticas dos checkpoints', () => {
   for (const action of [
     'offlineSync.inspect','client.dashboard','simulator.quote','issuer.get','dcePrep.context',
     'client.dce.prepareStart','client.dce.saveResults','production.dceLabelData',
-    'production.labelTest.approve','production.print.confirm','production.handoff.confirm',
+    'production.labelTest.approve','production.generation.confirm','production.print.confirm','production.handoff.confirm',
     'production.protocol.data','production.postProduction.snapshot'
   ]) assert.ok(api.includes(`'${action}'`), `ação ausente: ${action}`);
 });
@@ -95,4 +96,25 @@ test('compatibilidade preserva IBGE e usa ADDRESS_ROWS.ID como chave do cliente'
 
 test('compatibilidade permite CLIENT_USER sem retirar perfis existentes', () => {
   assert.match(strict, /'AGENCY_ADMIN', 'CAMPAIGN_USER', 'CLIENT_USER'/);
+});
+
+
+const productionUi = read('src','operations-production-ui.js');
+
+test('LABEL_GENERATED só é registrado depois da geração integral do PDF', () => {
+  const strictFinish = strict.slice(strict.indexOf('function finishPortalReturnStrict_'), strict.indexOf('function listPostalObjectsStrict_'));
+  assert.doesNotMatch(strictFinish, /type: 'LABEL_GENERATED'/);
+  assert.match(postProduction, /function confirmProductionGeneration_/);
+  assert.match(postProduction, /type: 'LABEL_GENERATED'/);
+  assert.match(postProduction, /idempotencyKey: 'label-generated:' \+ productionBatchId \+ ':' \+ service/);
+  assert.match(productionUi, /downloadBlob\(pdf,[\s\S]*?await dataAction\("production\.generation\.confirm"/);
+});
+
+
+test('sync offline não inventa LABEL_GENERATED e só o reproduz quando veio do manifesto', () => {
+  const createBody = offlineSyncBackend.slice(offlineSyncBackend.indexOf('function offlineSyncCreateConnectedBatch_'), offlineSyncBackend.indexOf('function offlineSyncReplayEvents_'));
+  assert.doesNotMatch(createBody, /offline-label-generated/);
+  assert.match(offlineSyncBackend, /'LABEL_TEST_APPROVED', 'LABEL_GENERATED', 'LABEL_PRINTED', 'LABEL_HANDOFF'/);
+  assert.match(offlineSyncBackend, /event\.type === 'LABEL_GENERATED'/);
+  assert.match(offlineSyncBackend, /idempotencyKey: 'label-generated:' \+ productionBatchId \+ ':' \+ event\.service/);
 });

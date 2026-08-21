@@ -3,7 +3,7 @@ export const OFFLINE_MANIFEST_VERSION = 3;
 export const OFFLINE_VOLUME_CAPACITY = 250;
 export const OFFLINE_DOCUMENT_MODES = Object.freeze(['SIMPLIFIED_DECLARATION', 'DCE_AUTHORIZED']);
 export const OFFLINE_MATRIX_OK = Object.freeze(['AUTO_VERIFIED', 'VERIFIED']);
-export const OFFLINE_EVENT_TYPES = Object.freeze(['LABEL_TEST_APPROVED', 'LABEL_PRINTED', 'LABEL_HANDOFF']);
+export const OFFLINE_EVENT_TYPES = Object.freeze(['LABEL_TEST_APPROVED', 'LABEL_GENERATED', 'LABEL_PRINTED', 'LABEL_HANDOFF']);
 
 function text(value) { return String(value == null ? '' : value).trim(); }
 function digits(value) { return text(value).replace(/\D/g, ''); }
@@ -110,10 +110,13 @@ export function validateOfflineManifest(manifest) {
     if (type === 'LABEL_HANDOFF' && text(event.receivedBy).length < 2) problems.push(`EVENTO_RECEBEDOR_AUSENTE:${eventId}`);
   }
 
+  const generated = eventTotals(events, 'LABEL_GENERATED');
   const printed = eventTotals(events, 'LABEL_PRINTED');
   const handedOff = eventTotals(events, 'LABEL_HANDOFF');
   const serviceTotals = { PAC: summaryPac, SEDEX: summarySedex };
   for (const current of ['PAC', 'SEDEX']) {
+    if (generated[current] > serviceTotals[current]) problems.push(`GERACAO_ACIMA_TOTAL:${current}`);
+    if (generated[current] > 0 && generated[current] !== serviceTotals[current]) problems.push(`GERACAO_PARCIAL_NAO_PERMITIDA:${current}`);
     if (printed[current] > serviceTotals[current]) problems.push(`IMPRESSAO_ACIMA_TOTAL:${current}`);
     if (printed[current] > 0 && printed[current] !== serviceTotals[current]) problems.push(`IMPRESSAO_PARCIAL_NAO_PERMITIDA:${current}`);
     if (handedOff[current] > serviceTotals[current]) problems.push(`ENTREGA_ACIMA_TOTAL:${current}`);
@@ -136,6 +139,7 @@ export function validateOfflineManifest(manifest) {
       volumes: volumes.length,
       tests: tests.length,
       events: events.length,
+      generated,
       printed,
       handedOff,
     },

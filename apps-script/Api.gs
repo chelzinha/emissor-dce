@@ -75,6 +75,7 @@ function doPost(event) {
       'client.dce.file': function() { return readClientDceXmlFile_(user.id, request.payload || {}); },
       'production.dceLabelData': function() { return getDceLabelProductionData_(user.id, request.payload || {}); },
       'production.labelTest.approve': function() { return approveProductionLabelTest_(user.id, request.payload || {}); },
+      'production.generation.confirm': function() { return confirmProductionGeneration_(user.id, request.payload || {}); },
       'production.print.confirm': function() { return confirmProductionPrint_(user.id, request.payload || {}); },
       'production.handoff.confirm': function() { return confirmProductionHandoff_(user.id, request.payload || {}); },
       'production.protocol.data': function() { return postingProtocolData_(user.id, request.payload || {}); },

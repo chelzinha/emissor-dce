@@ -167,7 +167,10 @@ async function generateBatch(card) {
     const gate = batchGenerationGate({ rows: session.objects, crops: session.matrix.verifiedCrops, documentMode: session.mode, sender: session.sender, testModels: session.testModels, operations, productionBatchId: id, allowSimplified: session.mode === DOCUMENT_MODES.SIMPLIFIED }); renderGate(card, gate);
     if (!gate.ready) throw new Error(`Lote ainda bloqueado: ${gate.problems.join(", ")}`);
     const models = buildProductionModels(session.objects, session.matrix.verifiedCrops, { documentMode: session.mode, sender: session.sender, format: "10x15" });
-    const pdf = await generateBatchLabelPdf(models, { postalHeader: session.postalHeader }); downloadBlob(pdf, `lote_etiquetas_${id.slice(0, 8)}_${models.length}.pdf`); setStatus(card, `Lote gerado com ${number(models.length)} etiquetas. A impressao e a entrega a operacao continuam sendo eventos separados e devem ser registradas somente quando ocorrerem.`, "ok");
+    const pdf = await generateBatchLabelPdf(models, { postalHeader: session.postalHeader });
+    downloadBlob(pdf, `lote_etiquetas_${id.slice(0, 8)}_${models.length}.pdf`);
+    await dataAction("production.generation.confirm", { campaignId: session.cid, productionBatchId: id, quantity: models.length });
+    setStatus(card, `Lote gerado e registrado com ${number(models.length)} etiquetas. A impressao e a entrega a operacao continuam sendo eventos separados e devem ser registradas somente quando ocorrerem.`, "ok");
   } catch (error) { setStatus(card, h(error.message || error), "bad"); }
 }
 
