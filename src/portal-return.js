@@ -1,5 +1,6 @@
 export const TRACKING_RE = /^[A-Z]{2}\d{9}[A-Z]{2}$/;
 export const VOLUME_CAPACITY = 250;
+export const VERIFIED_MATRIX_STATUSES = Object.freeze(["AUTO_VERIFIED", "VERIFIED"]);
 
 const HEADER_ALIASES = Object.freeze({
   trackingCode: ["OBJETO", "OBJETO_POSTAL", "NUMERO_ETIQUETA", "CODIGO_RASTREAMENTO", "SRO"],
@@ -143,6 +144,10 @@ export function matrixStatusFor(trackingCode, auditEntry) {
   return "MANUAL_REVIEW";
 }
 
+export function isMatrixVerified(status) {
+  return VERIFIED_MATRIX_STATUSES.includes(String(status || "").toUpperCase());
+}
+
 export function mergePortalRowsWithMatrix(rows, audit = []) {
   const byObject = new Map();
   for (const entry of audit) {
@@ -182,9 +187,11 @@ export function summarizePortalReturn(rows) {
     else if (status === "DIVERGENT") summary.divergent += 1;
     else summary.missing += 1;
   });
-  summary.matched = summary.autoVerified + summary.verified + summary.textOnly + summary.manualReview;
-  summary.readyForProduction = summary.invalid === 0 && summary.missing === 0 && summary.divergent === 0;
-  summary.fullyAutoVerified = summary.invalid === 0 && summary.autoVerified === summary.total;
+  summary.matrixVerified = summary.autoVerified + summary.verified;
+  summary.matrixPending = summary.textOnly + summary.manualReview + summary.missing + summary.divergent;
+  summary.matched = summary.matrixVerified + summary.textOnly + summary.manualReview;
+  summary.readyForProduction = summary.invalid === 0 && summary.total > 0 && summary.matrixVerified === summary.total;
+  summary.fullyAutoVerified = summary.invalid === 0 && summary.total > 0 && summary.autoVerified === summary.total;
   return summary;
 }
 

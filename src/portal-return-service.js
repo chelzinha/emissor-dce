@@ -26,7 +26,6 @@ export async function analyzePortalReturn({ csvFile, pdfFiles, pdfjsLib, ZXing, 
   const parsed = parsePortalReturnCsv(csvText);
   if (parsed.errors.length) throw new Error(parsed.errors.join("; "));
   if (!parsed.rows.length) throw new Error("O CSV do Portal nao possui objetos.");
-
   onProgress?.({ stage: "pdf-load", message: "Lendo PDFs do Portal Postal" });
   const documents = await loadPdfDocuments(pdfFiles, pdfjsLib);
   const matrixResult = await auditPdfDocuments(documents, ZXing, {
@@ -60,15 +59,8 @@ export async function savePortalReturn({ campaignId, portalExportId = "", csvFil
   const backendRows = buildPortalReturnBackendRows(analysis.rows);
   const chunks = chunkRows(backendRows, created.chunkSize || 200);
   for (let index = 0; index < chunks.length; index += 1) {
-    onProgress?.({
-      stage: "save-rows", index: index + 1, total: chunks.length,
-      message: `Salvando bloco ${index + 1} de ${chunks.length}`,
-    });
-    await dataAction("portalReturn.append", {
-      campaignId,
-      portalReturnId: created.id,
-      rows: chunks[index],
-    });
+    onProgress?.({ stage: "save-rows", index: index + 1, total: chunks.length, message: `Salvando bloco ${index + 1} de ${chunks.length}` });
+    await dataAction("portalReturn.append", { campaignId, portalReturnId: created.id, rows: chunks[index] });
   }
   const finished = await dataAction("portalReturn.finish", { campaignId, portalReturnId: created.id });
   onProgress?.({ stage: "saved", message: "Retorno do Portal registrado", result: finished });

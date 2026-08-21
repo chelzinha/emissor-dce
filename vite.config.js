@@ -12,6 +12,7 @@ export default defineConfig({
       input: {
         dce: resolve(rootDir, "index.html"),
         eleicoes: resolve(rootDir, "eleicoes.html"),
+        portal: resolve(rootDir, "portal.html"),
       },
     },
   },

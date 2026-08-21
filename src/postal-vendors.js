@@ -43,7 +43,3 @@ export async function loadPostalVendors() {
   const ZXing = await loadScript(VENDORS.zxing, "ZXing");
   return { pdfjsLib, ZXing };
 }
-
-export function postalVendorSources() {
-  return { ...VENDORS };
-}

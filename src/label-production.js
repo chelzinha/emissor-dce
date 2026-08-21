@@ -52,6 +52,8 @@ export const DOCUMENT_MODES = Object.freeze({
   DCE: "DCE_AUTHORIZED",
 });
 
+export const VERIFIED_MATRIX_STATUSES = Object.freeze(["AUTO_VERIFIED", "VERIFIED"]);
+
 export const SERVICE_PRESENTATION = Object.freeze({
   PAC: Object.freeze({ routingClass: "STANDARD", stripeFallback: "IMP" }),
   SEDEX: Object.freeze({ routingClass: "EXPRESSA", stripeFallback: "SIM" }),
@@ -116,17 +118,29 @@ export function declarationDescriptor(documentMode, document = {}) {
   }
   if (documentMode === DOCUMENT_MODES.DCE) {
     const accessKey = String(document.accessKey || "").replace(/\D/g, "");
-    const protocol = String(document.protocol || "").replace(/\D/g, "");
+    const protocol = String(document.protocol || "").trim();
+    const qrCode = String(document.qrCode || document.dce?.qrCode || "").trim();
+    const identification = document.identification || document.dce?.identification || {};
     return {
       mode: documentMode,
       title: "DACE - DECLARACAO AUXILIAR DE CONTEUDO ELETRONICA",
       authorized: accessKey.length === 44 && Boolean(protocol),
       accessKey,
       protocol,
-      qrEligible: accessKey.length === 44,
+      qrCode,
+      qrEligible: accessKey.length === 44 && /^https:\/\//i.test(qrCode) && qrCode.includes(accessKey),
+      environment: String(identification.environment || document.environment || "2") === "1" ? "1" : "2",
+      series: Number(identification.series || document.series || 0),
+      number: Number(identification.number || document.number || 0),
+      emissionDateTime: String(identification.emissionDateTime || document.emissionDateTime || ""),
+      authorizedAt: String(document.authorizedAt || document.dce?.authorizedAt || ""),
     };
   }
   throw new Error("Modalidade documental invalida");
+}
+
+export function isMatrixVerified(status) {
+  return VERIFIED_MATRIX_STATUSES.includes(String(status || "").toUpperCase());
 }
 
 export function productionReadiness({ row, documentMode, matrixRequired = true, testLabelApproved = false }) {
@@ -136,11 +150,12 @@ export function productionReadiness({ row, documentMode, matrixRequired = true, 
   const family = normalizeServiceFamily(row?.service);
   if (!["PAC", "SEDEX"].includes(family)) problems.push("SERVICO_INVALIDO");
   const matrixStatus = String(row?.matrix?.status || "MISSING");
-  if (matrixRequired && ["MISSING", "DIVERGENT"].includes(matrixStatus)) problems.push("MATRIX_NAO_VALIDADO");
+  if (matrixRequired && !isMatrixVerified(matrixStatus)) problems.push("MATRIX_NAO_VALIDADO");
   if (!documentMode) problems.push("MODALIDADE_DOCUMENTAL_NAO_SELECIONADA");
   else if (documentMode === DOCUMENT_MODES.DCE) {
     const descriptor = declarationDescriptor(documentMode, row || {});
     if (!descriptor.authorized) problems.push("DCE_NAO_AUTORIZADA");
+    if (descriptor.authorized && !descriptor.qrEligible) problems.push("DCE_QRCODE_NAO_VALIDADO");
   }
   if (!testLabelApproved) problems.push("ETIQUETA_TESTE_NAO_APROVADA");
   return { ready: problems.length === 0, problems };
@@ -160,10 +175,13 @@ export function productionSummary(rows, documentMode) {
     const family = normalizeServiceFamily(row.service);
     if (family === "PAC") summary.pac += 1;
     if (family === "SEDEX") summary.sedex += 1;
-    if (["AUTO_VERIFIED", "VERIFIED"].includes(String(row.matrix?.status || ""))) summary.matrixVerified += 1;
+    if (isMatrixVerified(row.matrix?.status)) summary.matrixVerified += 1;
     else summary.matrixPending += 1;
     if (documentMode === DOCUMENT_MODES.SIMPLIFIED) summary.documentsReady += 1;
-    if (documentMode === DOCUMENT_MODES.DCE && declarationDescriptor(documentMode, row).authorized) summary.documentsReady += 1;
+    if (documentMode === DOCUMENT_MODES.DCE) {
+      const descriptor = declarationDescriptor(documentMode, row);
+      if (descriptor.authorized && descriptor.qrEligible) summary.documentsReady += 1;
+    }
   });
   return summary;
 }
@@ -174,6 +192,26 @@ export function buildUnifiedLabelModel(row, options = {}) {
   const documentMode = options.documentMode;
   const declaration = declarationDescriptor(documentMode, row);
   const presentation = servicePresentation(row.service, row.matrix?.stripe || row.stripe);
+  const authoritativeIssuer = documentMode === DOCUMENT_MODES.DCE ? (row.issuer || {}) : {};
+  const issuerAddress = authoritativeIssuer.address || {};
+  const sender = documentMode === DOCUMENT_MODES.DCE && authoritativeIssuer.name ? {
+    name: String(authoritativeIssuer.name || "").trim(),
+    document: formatDocument(authoritativeIssuer.cnpj || authoritativeIssuer.document),
+    addressLine: [issuerAddress.street, issuerAddress.number, issuerAddress.complement].filter(Boolean).join(", "),
+    cityLine: [[issuerAddress.city, issuerAddress.uf].filter(Boolean).join(" / "), formatZip(issuerAddress.zip)].filter(Boolean).join(" · "),
+  } : {
+    name: String(options.sender?.name || "").trim(),
+    document: formatDocument(options.sender?.document),
+    addressLine: String(options.sender?.addressLine || "").trim(),
+    cityLine: String(options.sender?.cityLine || "").trim(),
+  };
+  const items = Array.isArray(row.items) ? row.items.map((item) => ({
+    description: String(item.description || "").trim(),
+    ncm: String(item.ncm || "").replace(/\D/g, ""),
+    quantity: Number(item.quantity || 0),
+    unitValue: Number(item.unitValue || 0),
+    totalValue: Number(item.totalValue != null ? item.totalValue : Number(item.quantity || 0) * Number(item.unitValue || 0)),
+  })) : [];
   return {
     format: options.format || "10x15",
     dimensions: { widthMm: format.widthMm, heightMm: format.heightMm },
@@ -181,7 +219,7 @@ export function buildUnifiedLabelModel(row, options = {}) {
     trackingCode: String(row.trackingCode || "").toUpperCase(),
     trackingCodeFormatted: formatTrackingCode(row.trackingCode),
     dataMatrixImage: row.matrix?.image || row.matrix?.dataUrl || "",
-    dataMatrixStatus: row.matrix?.status || "MISSING",
+    dataMatrixStatus: row.matrix?.status || row.matrixStatus || "MISSING",
     recipient: {
       name: String(row.recipient?.name || "").trim(),
       document: formatDocument(row.recipient?.document),
@@ -193,13 +231,10 @@ export function buildUnifiedLabelModel(row, options = {}) {
       uf: String(row.recipient?.address?.uf || "").trim().toUpperCase(),
       zip: formatZip(row.recipient?.address?.zip),
     },
-    sender: {
-      name: String(options.sender?.name || "").trim(),
-      document: formatDocument(options.sender?.document),
-      addressLine: String(options.sender?.addressLine || "").trim(),
-      cityLine: String(options.sender?.cityLine || "").trim(),
-    },
-    content: String(row.content || options.defaultContent || "").trim(),
+    sender,
+    issuer: authoritativeIssuer,
+    items,
+    content: String(row.content || items[0]?.description || options.defaultContent || "").trim(),
     declaration,
     postalReference: String(row.reference || "").trim(),
     formatSpec: format,
