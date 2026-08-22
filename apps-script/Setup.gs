@@ -43,11 +43,52 @@ function setApiToken(token) {
   return true;
 }
 
+function remapRowsByHeader_(existingHeaders, rows, expectedHeaders) {
+  const index = {};
+  existingHeaders.forEach(function(header, column) {
+    const key = String(header || '').trim();
+    if (key && index[key] == null) index[key] = column;
+  });
+  return rows.map(function(row) {
+    return expectedHeaders.map(function(header) {
+      const column = index[String(header)];
+      return column == null ? '' : row[column];
+    });
+  });
+}
+
 function configureSheet_(sheet, headers) {
+  const lastColumn = sheet.getLastColumn();
+  const lastRow = sheet.getLastRow();
+  const existingHeaders = lastColumn
+    ? sheet.getRange(1, 1, 1, lastColumn).getValues()[0].map(function(value) { return String(value || '').trim(); })
+    : [];
+  const existingRows = lastRow > 1 && lastColumn
+    ? sheet.getRange(2, 1, lastRow - 1, lastColumn).getValues()
+    : [];
+  const hasExistingSchema = existingHeaders.some(function(header) { return Boolean(header); });
+  const sameSchema = existingHeaders.length === headers.length && headers.every(function(header, index) {
+    return String(existingHeaders[index] || '') === String(header);
+  });
+  const remappedRows = hasExistingSchema && !sameSchema && existingRows.length
+    ? remapRowsByHeader_(existingHeaders, existingRows, headers)
+    : null;
+
   if (sheet.getMaxColumns() < headers.length) {
     sheet.insertColumnsAfter(sheet.getMaxColumns(), headers.length - sheet.getMaxColumns());
   }
+
+  if (hasExistingSchema && !sameSchema) {
+    const clearWidth = Math.max(lastColumn, headers.length);
+    const clearHeight = Math.max(1, lastRow);
+    sheet.getRange(1, 1, clearHeight, clearWidth).clearContent();
+  }
+
   sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  if (remappedRows && remappedRows.length) {
+    sheet.getRange(2, 1, remappedRows.length, headers.length).setValues(remappedRows);
+  }
+
   sheet.setFrozenRows(1);
   sheet.getRange(1, 1, 1, headers.length)
     .setBackground('#123A63')
