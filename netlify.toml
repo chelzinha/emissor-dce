@@ -1,5 +1,5 @@
 [build]
-  command = "npm run build"
+  command = "npm run check"
   publish = "dist"
 
 [build.environment]
@@ -12,6 +12,16 @@
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/portal"
+  to = "/portal.html"
+  status = 200
+
+[[redirects]]
+  from = "/operacoes"
+  to = "/eleicoes.html"
   status = 200
 
 [[redirects]]
