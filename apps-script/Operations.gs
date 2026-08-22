@@ -30,6 +30,16 @@ function recordOperationEvent_(userId, payload) {
   const idempotencyKey = String(payload.idempotencyKey || '').trim();
   if (!idempotencyKey) throw new Error('Informe a chave de idempotencia do evento.');
 
+  const metadata = payload.metadata || {};
+  if (type === 'DCE_PREPARED' && String(metadata.status || '') === 'AWAITING_DCE_PREPARATION') {
+    return {
+      skipped: true,
+      type: type,
+      quantity: quantity,
+      reason: 'DCE_PREPARED so e registrado depois do pre-flight fiscal.'
+    };
+  }
+
   const duplicate = findRow_('OPERATION_EVENTS', function(row) {
     return String(row.CAMPAIGN_ID) === campaignId && String(row.IDEMPOTENCY_KEY) === idempotencyKey;
   });
@@ -47,7 +57,7 @@ function recordOperationEvent_(userId, payload) {
     SERVICE: service,
     QUANTITY: quantity,
     IDEMPOTENCY_KEY: idempotencyKey.slice(0, 220),
-    METADATA_JSON: payload.metadata || {},
+    METADATA_JSON: metadata,
     OCCURRED_AT: occurredAt,
     CREATED_AT: nowIso_()
   };
