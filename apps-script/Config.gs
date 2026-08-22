@@ -1,6 +1,6 @@
 const DCE_CONFIG = Object.freeze({
-  APP_NAME: 'AGF Eleicoes',
-  VERSION: '0.4.0',
+  APP_NAME: 'AGF Operacoes Postais',
+  VERSION: '0.5.0',
   MAX_IMPORT_CHUNK: 200,
   MAX_ADDRESS_CHUNK: 200,
   MAX_PORTAL_RETURN_CHUNK: 200,
@@ -25,26 +25,13 @@ const DCE_CONFIG = Object.freeze({
     PORTAL_EXPORTS: ['ID', 'CAMPAIGN_ID', 'ADDRESS_LIST_ID', 'SERVICE', 'STATUS', 'TOTAL_ROWS', 'FILE_NAME', 'FILE_ID', 'SHA256', 'CREATED_BY', 'CREATED_AT'],
     PORTAL_RETURNS: ['ID', 'CAMPAIGN_ID', 'PORTAL_EXPORT_ID', 'STATUS', 'TOTAL_ROWS', 'PAC_ROWS', 'SEDEX_ROWS', 'INVALID_ROWS', 'MATRIX_SUMMARY_JSON', 'CSV_FILE_NAME', 'CSV_SHA256', 'PDF_FILES_JSON', 'DOCUMENT_MODE', 'CREATED_BY', 'CREATED_AT', 'UPDATED_AT'],
     POSTAL_OBJECTS: ['ID', 'CAMPAIGN_ID', 'PORTAL_RETURN_ID', 'TRACKING_CODE', 'SERVICE', 'STATUS', 'POSTAL_JSON', 'RECIPIENT_JSON', 'CONTENT', 'REFERENCE', 'ACCESS_KEY', 'PROTOCOL', 'ERRORS_JSON', 'MATRIX_STATUS', 'MATRIX_JSON', 'PRODUCTION_BATCH_ID', 'VOLUME_ID', 'CREATED_AT', 'UPDATED_AT'],
-    PRODUCTION_BATCHES: ['ID', 'CAMPAIGN_ID', 'PORTAL_RETURN_ID', 'DOCUMENT_MODE', 'STATUS', 'TOTAL', 'PAC', 'SEDEX', 'MATRIX_SUMMARY_JSON', 'CREATED_BY', 'CREATED_AT', 'UPDATED_AT'],
+    PRODUCTION_BATCHES: ['ID', 'CAMPAIGN_ID', 'PORTAL_RETURN_ID', 'DOCUMENT_MODE', 'STATUS', 'TOTAL', 'PAC', 'SEDEX', 'MATRIX_SUMMARY_JSON', 'DCE_USER_ID', 'DCE_BATCH_ID', 'DCE_AUTHORIZED', 'DCE_REJECTED', 'DCE_ERRORS', 'CREATED_BY', 'CREATED_AT', 'UPDATED_AT'],
     DELIVERY_VOLUMES: ['ID', 'CAMPAIGN_ID', 'PRODUCTION_BATCH_ID', 'SERVICE', 'VOLUME_NUMBER', 'TOTAL_VOLUMES', 'QUANTITY', 'TRACKING_CODES_JSON', 'STATUS', 'DELIVERED_AT', 'RECEIVED_BY', 'PROOF_FILE_ID', 'CREATED_AT', 'UPDATED_AT'],
     OPERATION_EVENTS: ['ID', 'CAMPAIGN_ID', 'USER_ID', 'TYPE', 'SOURCE_TYPE', 'SOURCE_ID', 'SERVICE', 'QUANTITY', 'IDEMPOTENCY_KEY', 'METADATA_JSON', 'OCCURRED_AT', 'CREATED_AT'],
     DAILY_SUMMARIES: ['ID', 'CAMPAIGN_ID', 'DATE', 'METRICS_JSON', 'UPDATED_AT'],
     LOGS: ['ID', 'USER_ID', 'ACTION', 'LEVEL', 'MESSAGE', 'DETAILS_JSON', 'CREATED_AT']
   })
 });
-
-function getScriptProperties_() {
-  return PropertiesService.getScriptProperties();
-}
-
-function getSpreadsheet_() {
-  const id = getScriptProperties_().getProperty(DCE_CONFIG.PROPERTY_SPREADSHEET_ID);
-  if (!id) throw new Error('Execute setupProject() antes de publicar o Web App.');
-  return SpreadsheetApp.openById(id);
-}
-
-function getRootFolder_() {
-  const id = getScriptProperties_().getProperty(DCE_CONFIG.PROPERTY_ROOT_FOLDER_ID);
-  if (!id) throw new Error('Pasta raiz nao configurada. Execute setupProject().');
-  return DriveApp.getFolderById(id);
-}
+function getScriptProperties_(){return PropertiesService.getScriptProperties();}
+function getSpreadsheet_(){const id=getScriptProperties_().getProperty(DCE_CONFIG.PROPERTY_SPREADSHEET_ID);if(!id)throw new Error('Execute setupProject() antes de publicar o Web App.');return SpreadsheetApp.openById(id);}
+function getRootFolder_(){const id=getScriptProperties_().getProperty(DCE_CONFIG.PROPERTY_ROOT_FOLDER_ID);if(!id)throw new Error('Pasta raiz nao configurada. Execute setupProject().');return DriveApp.getFolderById(id);}
