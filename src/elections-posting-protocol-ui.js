@@ -1,0 +1,9 @@
+import { dataAction } from './api.js';
+import { downloadPostingProtocol } from './posting-protocol-generator.js';
+
+const ROOT=document.querySelector('#elections-app');
+function campaignId(){return document.querySelector('#campaign-select')?.value||'';}
+function notify(message,type='info'){const box=document.querySelector('#elections-toast');if(!box)return;box.textContent=message;box.className=`elections-toast show ${type}`;clearTimeout(box._protocolTimer);box._protocolTimer=setTimeout(()=>box.className='elections-toast',4800);}
+async function generate(button){const card=button.closest('.card'),volumeButton=card?.querySelector('[data-volumes]'),batchId=volumeButton?.dataset.volumes;if(!batchId)return;button.disabled=true;const original=button.textContent;button.textContent='Gerando protocolo…';try{const data=await dataAction('production.protocol.data',{campaignId:campaignId(),productionBatchId:batchId});if(!data.ready)throw new Error((data.errors||['Dados do protocolo incompletos.']).slice(0,8).join(' '));await downloadPostingProtocol(data);notify(`Protocolo gerado com ${Number(data.total||0).toLocaleString('pt-BR')} objetos e ${Number(data.lists?.length||0).toLocaleString('pt-BR')} lista(s) postal(is).`,'success');}catch(error){notify(error.message,'error');}finally{button.disabled=false;button.textContent=original;}}
+function mount(){ROOT?.querySelectorAll('[data-op="protocol"]').forEach(button=>{if(button.dataset.protocolPdfBound)return;button.dataset.protocolPdfBound='1';button.textContent='Gerar Protocolo de Postagem';button.addEventListener('click',event=>{event.preventDefault();event.stopImmediatePropagation();generate(button);},true);});}
+const observer=new MutationObserver(()=>queueMicrotask(mount));if(ROOT)observer.observe(ROOT,{childList:true,subtree:true});mount();

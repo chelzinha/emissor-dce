@@ -1,0 +1,2 @@
+function fixDonuts(){document.querySelectorAll('.donut').forEach(el=>{for(const key of ['--a','--b']){const raw=el.style.getPropertyValue(key).trim();if(!raw.endsWith('deg'))continue;const value=Number(raw.slice(0,-3));if(Number.isFinite(value)&&value>=0&&value<=100)el.style.setProperty(key,`${value*3.6}deg`)}})}
+const observer=new MutationObserver(()=>queueMicrotask(fixDonuts));observer.observe(document.documentElement,{childList:true,subtree:true});fixDonuts();
