@@ -9,3 +9,6 @@ test("preflight exige valor e documento antes de liberar",()=>{const src=read("a
 test("resultado autorizado retorna ao objeto postal",()=>{const src=read("apps-script/ProductionDce.gs");assert.match(src,/ACCESS_KEY/);assert.match(src,/PROTOCOL/);assert.match(src,/READY_FOR_UNIFIED_LABEL/)});
 test("evento preparado prematuro nao entra na metrica",()=>{const src=read("apps-script/Operations.gs");assert.match(src,/AWAITING_DCE_PREPARATION/)});
 test("rota portal nao substitui index do emissor",()=>{const vite=read("vite.config.js");assert.match(vite,/portal:resolve\(rootDir,"portal.html"\)/);assert.match(vite,/dce:resolve\(rootDir,"index.html"\)/)});
+
+test("valor declarado preserva decimal com ponto e virgula",()=>{const src=read("apps-script/ProductionDce.gs");assert.match(src,/typeof value==='number'/);assert.match(src,/lastIndexOf\(','\)/);assert.match(src,/lastIndexOf\('\.'\)/)});
+test("autorizacao em producao exige status e confirmacao explicita",()=>{const src=read("src/client-portal.js");assert.match(src,/\/api\/dce\/status/);assert.match(src,/window\.confirm\("Confirma a autorização deste lote no ambiente de PRODUÇÃO\?"\)/)});

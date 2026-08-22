@@ -1,6 +1,16 @@
 function productionDceBatch_(campaignId,batchId){return findRow_('PRODUCTION_BATCHES',r=>String(r.ID)===String(batchId)&&String(r.CAMPAIGN_ID)===String(campaignId));}
 function productionDceObjects_(campaignId,batchId){return sheetRows_(getSheet_('POSTAL_OBJECTS')).filter(r=>String(r.CAMPAIGN_ID)===String(campaignId)&&String(r.PRODUCTION_BATCH_ID)===String(batchId));}
-function productionDceDeclaredValue_(postal){const raw=postal||{};const value=raw.VALOR_DECLARADO??raw.declaredValue??raw.valorDeclarado??raw.valor??'';return Number(String(value).replace(/\./g,'').replace(',','.').replace(/[^0-9.-]/g,''));}
+function productionDceDeclaredValue_(postal){
+  const raw=postal||{},value=raw.VALOR_DECLARADO??raw.declaredValue??raw.valorDeclarado??raw.valor??'';
+  if(typeof value==='number')return Number.isFinite(value)?value:NaN;
+  let text=String(value).trim().replace(/[^0-9,.-]/g,'');
+  if(!text)return NaN;
+  const comma=text.lastIndexOf(','),dot=text.lastIndexOf('.');
+  if(comma>=0&&dot>=0){if(comma>dot)text=text.replace(/\./g,'').replace(',','.');else text=text.replace(/,/g,'');}
+  else if(comma>=0)text=text.replace(/\./g,'').replace(',','.');
+  else if((text.match(/\./g)||[]).length>1)text=text.replace(/\.(?=.*\.)/g,'');
+  return Number(text);
+}
 function normalizeCityName_(value){return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/\s+/g,' ').trim();}
 function lookupCityCode_(city,uf){const cache=CacheService.getScriptCache(),key='ibge:'+String(uf).toUpperCase()+':'+normalizeCityName_(city),cached=cache.get(key);if(cached)return cached;const url='https://servicodados.ibge.gov.br/api/v1/localidades/estados/'+encodeURIComponent(String(uf).toUpperCase())+'/municipios?orderBy=nome';const response=UrlFetchApp.fetch(url,{muteHttpExceptions:true});if(response.getResponseCode()!==200)throw new Error('IBGE indisponivel para '+uf+'.');const rows=JSON.parse(response.getContentText()||'[]');const match=rows.find(x=>normalizeCityName_(x.nome)===normalizeCityName_(city));if(!match)throw new Error('Codigo IBGE nao localizado para '+city+'/'+uf+'.');const code=String(match.id);cache.put(key,code,21600);return code;}
 function buildProductionDceSource_(object) {
