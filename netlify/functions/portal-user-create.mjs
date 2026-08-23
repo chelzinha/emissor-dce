@@ -1,5 +1,5 @@
 import { admin, verifyRequestOrigin } from '@netlify/identity';
-import { callAppsScript } from './_shared/apps-script.mjs';
+import { callOperationsAppsScript } from './_shared/operations-apps-script.mjs';
 import { json, parseJson, publicError, requireUser } from './_shared/http.mjs';
 import { explicitUsername, findIdentityUserByUsername } from './_shared/portal-username.mjs';
 import { findIdentityUserByEmail, normalizePortalProvisionInput } from './_shared/portal-user-provision.mjs';
@@ -22,7 +22,7 @@ export default async function handler(req) {
   try {
     verifyRequestOrigin(req);
     const input = normalizePortalProvisionInput(await parseJson(req, 50_000));
-    const campaign = await callAppsScript('campaign.get', { campaignId: input.campaignId }, actor);
+    const campaign = await callOperationsAppsScript('campaign.get', { campaignId: input.campaignId }, actor);
     if (String(campaign?.role || '') !== 'AGENCY_ADMIN') return json({ ok: false, error: 'Seu perfil não permite criar acessos.' }, 403);
 
     const users = await listAllIdentityUsers();
@@ -55,7 +55,7 @@ export default async function handler(req) {
     }
 
     try {
-      await callAppsScript('campaign.user.add', {
+      await callOperationsAppsScript('campaign.user.add', {
         campaignId: input.campaignId,
         userId: String(target.id),
         role: 'CAMPAIGN_USER',
