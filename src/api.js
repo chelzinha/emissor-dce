@@ -14,8 +14,14 @@ export async function api(path, options = {}) {
   return result.data;
 }
 
+function isOperationsFrontend() {
+  const path = String(globalThis.location?.pathname || "").toLowerCase();
+  return path === "/eleicoes" || path === "/eleicoes.html" || path.startsWith("/operacoes");
+}
+
 export function dataAction(action, payload = {}) {
-  return api("/api/data", { method: "POST", body: JSON.stringify({ action, payload }) });
+  const endpoint = isOperationsFrontend() ? "/api/operations-data" : "/api/data";
+  return api(endpoint, { method: "POST", body: JSON.stringify({ action, payload }) });
 }
 
 export function downloadBlob(blob, name) {
