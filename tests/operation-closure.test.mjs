@@ -5,7 +5,7 @@ import vm from 'node:vm';
 
 const source=fs.readFileSync(new URL('../apps-script/OperationClosure.gs',import.meta.url),'utf8');
 const api=fs.readFileSync(new URL('../apps-script/Api.gs',import.meta.url),'utf8');
-const sandbox={};
+const sandbox={safeJsonParse_:(value,fallback)=>{try{return typeof value==='string'?JSON.parse(value):value||fallback;}catch{return fallback;}}};
 vm.createContext(sandbox);
 vm.runInContext(source,sandbox);
 
@@ -40,6 +40,15 @@ test('rastreamento transitório bloqueia encerramento',()=>{
 test('impressão, entrega interna e postagem pendentes aparecem separadamente',()=>{
   const result=sandbox.operationClosureDecision_(base({printPending:4,handoffPending:7,notPosted:9}));
   assert.deepEqual(Array.from(result.blockers).map(item=>item.code),['PRINT_PENDING','HANDOFF_PENDING','POSTING_PENDING']);
+});
+
+test('etiquetas geradas por volume são atribuídas ao lote pelos metadados',()=>{
+  const events=[
+    {TYPE:'LABEL_GENERATED',SOURCE_TYPE:'DELIVERY_VOLUME',SOURCE_ID:'vol-1',QUANTITY:250,METADATA_JSON:'{"productionBatchId":"batch-1"}'},
+    {TYPE:'LABEL_GENERATED',SOURCE_TYPE:'DELIVERY_VOLUME',SOURCE_ID:'vol-2',QUANTITY:83,METADATA_JSON:'{"productionBatchId":"batch-1"}'},
+    {TYPE:'LABEL_GENERATED',SOURCE_TYPE:'DELIVERY_VOLUME',SOURCE_ID:'vol-3',QUANTITY:10,METADATA_JSON:'{"productionBatchId":"batch-2"}'},
+  ];
+  assert.equal(sandbox.operationClosureEventSum_(events,'batch-1','LABEL_GENERATED'),333);
 });
 
 test('dispatcher expõe diagnóstico de encerramento somente leitura',()=>{

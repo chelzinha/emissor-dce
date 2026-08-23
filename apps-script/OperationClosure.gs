@@ -35,11 +35,15 @@ function operationClosureEvents_(campaignId) {
   return operationClosureCampaignRows_('OPERATION_EVENTS', campaignId);
 }
 
+function operationClosureEventBelongsToBatch_(row, batchId) {
+  if (String(row.SOURCE_TYPE) === 'PRODUCTION_BATCH' && String(row.SOURCE_ID) === String(batchId)) return true;
+  const meta = safeJsonParse_(row.METADATA_JSON, {});
+  return String(meta.productionBatchId || '') === String(batchId);
+}
+
 function operationClosureEventSum_(events, batchId, type) {
   return events.filter(function(row) {
-    return String(row.SOURCE_TYPE) === 'PRODUCTION_BATCH'
-      && String(row.SOURCE_ID) === String(batchId)
-      && String(row.TYPE) === String(type);
+    return String(row.TYPE) === String(type) && operationClosureEventBelongsToBatch_(row, batchId);
   }).reduce(function(sum, row) { return sum + Number(row.QUANTITY || 0); }, 0);
 }
 
