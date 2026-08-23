@@ -7,10 +7,16 @@ function h(value){return String(value??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','
 function campaignId(){return document.querySelector('#campaign-select')?.value || '';}
 
 function statusCopy(data){
-  if(data.status==='CLOSED') return {label:'Encerrada',cls:'closed',text:'A operação já está marcada como encerrada.'};
+  if(data.status==='CLOSED') return {label:'Encerrada',cls:'closed',text:'A operação está encerrada. Consultas e relatórios permanecem disponíveis, mas novas alterações operacionais ficam bloqueadas.'};
   if(data.status==='READY_WITH_RETURNS') return {label:'Pronta com devoluções',cls:'ready-return',text:'Todos os objetos chegaram a um estado terminal. Há devoluções registradas no fechamento.'};
   if(data.status==='READY') return {label:'Pronta para encerramento',cls:'ready',text:'Produção, postagem e rastreamento não possuem saldos operacionais pendentes.'};
   return {label:'Ainda não pronta',cls:'pending',text:'Existem saldos que precisam ser concluídos antes do encerramento.'};
+}
+
+function actionMarkup(data){
+  if(data.status==='CLOSED') return `<div class="closure-actions"><button type="button" class="secondary" data-closure-reopen>Reabrir operação</button><small>Reabertura exige motivo e confirmação explícita.</small></div>`;
+  if(data.ready) return `<div class="closure-actions"><button type="button" class="primary" data-closure-close>Encerrar operação</button><small>Depois do encerramento, o histórico continua disponível em modo de consulta.</small></div>`;
+  return '';
 }
 
 function renderCard(data){
@@ -25,10 +31,50 @@ function renderCard(data){
       <div class="returned"><span>Devolvidos</span><b>${fmt(stats.returned)}</b></div>
       <div class="pending"><span>Rastreamento em aberto</span><b>${fmt(stats.unresolvedTracking)}</b></div>
     </div>
-    ${blockers?`<div class="closure-blockers"><strong>Pendências para encerramento</strong><ul>${blockers}</ul></div>`:`<div class="closure-ready-note">✓ Todos os gates operacionais estão concluídos. O encerramento continuará sendo uma ação manual e explícita.</div>`}
+    ${blockers?`<div class="closure-blockers"><strong>Pendências para encerramento</strong><ul>${blockers}</ul></div>`:`<div class="closure-ready-note">✓ Todos os gates operacionais estão concluídos. O encerramento só acontece por ação manual e explícita.</div>`}
     <div class="closure-tracking-detail"><span>Sem atualização <b>${fmt(tracking.awaitingUpdate)}</b></span><span>Em trânsito <b>${fmt(tracking.inTransit)}</b></span><span>Saiu para entrega <b>${fmt(tracking.outForDelivery)}</b></span><span>Ocorrências <b>${fmt(tracking.exception)}</b></span><span>Em devolução <b>${fmt(tracking.returning)}</b></span><span>Desconhecidos <b>${fmt(tracking.unknown)}</b></span></div>
-    <small class="closure-note">${h(data.note||'Diagnóstico somente leitura.')}</small>
+    ${actionMarkup(data)}
+    <small class="closure-note">${h(data.note||'Diagnóstico de prontidão calculado pelo backend.')}</small>
   </section>`;
+}
+
+async function refreshCard(page,id){
+  const data=await dataAction('operation.closure.status',{campaignId:id});
+  if(!page.isConnected||campaignId()!==id)return null;
+  const existing=page.querySelector('[data-closure-card]');
+  const anchor=page.querySelector('.report-middle')||page.querySelector('.report-stages')?.closest('.card');
+  existing?.remove();
+  if(!anchor)return null;
+  anchor.insertAdjacentHTML('afterend',renderCard(data));
+  const card=page.querySelector('[data-closure-card]');
+  if(card){card.dataset.campaignId=id;bindActions(page,card,id,data);}
+  return card;
+}
+
+function bindActions(page,card,id,data){
+  card.querySelector('[data-closure-close]')?.addEventListener('click',async(event)=>{
+    const confirmation=window.prompt('Para encerrar esta operação, digite ENCERRAR.');
+    if(String(confirmation||'').trim().toUpperCase()!=='ENCERRAR')return;
+    const button=event.currentTarget,original=button.textContent;
+    button.disabled=true;button.textContent='Encerrando...';
+    try{
+      await dataAction('operation.closure.close',{campaignId:id,confirmation:'ENCERRAR'});
+      await refreshCard(page,id);
+    }catch(error){alert(error.message);button.disabled=false;button.textContent=original;}
+  });
+  card.querySelector('[data-closure-reopen]')?.addEventListener('click',async(event)=>{
+    const reason=window.prompt('Informe o motivo da reabertura da operação.');
+    if(!reason)return;
+    if(String(reason).trim().length<10){alert('Informe um motivo com pelo menos 10 caracteres.');return;}
+    const confirmation=window.prompt('Para reabrir esta operação, digite REABRIR.');
+    if(String(confirmation||'').trim().toUpperCase()!=='REABRIR')return;
+    const button=event.currentTarget,original=button.textContent;
+    button.disabled=true;button.textContent='Reabrindo...';
+    try{
+      await dataAction('operation.closure.reopen',{campaignId:id,confirmation:'REABRIR',reason:String(reason).trim()});
+      await refreshCard(page,id);
+    }catch(error){alert(error.message);button.disabled=false;button.textContent=original;}
+  });
 }
 
 async function enhance(){
@@ -40,11 +86,7 @@ async function enhance(){
   if(page.dataset.closureLoading===id)return;
   page.dataset.closureLoading=id;
   try{
-    const data=await dataAction('operation.closure.status',{campaignId:id});
-    if(!page.isConnected||campaignId()!==id)return;
-    existing?.remove();
-    const anchor=page.querySelector('.report-middle')||page.querySelector('.report-stages')?.closest('.card');
-    if(anchor){anchor.insertAdjacentHTML('afterend',renderCard(data));const card=page.querySelector('[data-closure-card]');if(card)card.dataset.campaignId=id;}
+    await refreshCard(page,id);
   }catch(error){
     if(!page.isConnected||campaignId()!==id)return;
     const anchor=page.querySelector('.report-middle');
