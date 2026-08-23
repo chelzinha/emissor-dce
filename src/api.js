@@ -16,7 +16,7 @@ export async function api(path, options = {}) {
 
 function isOperationsFrontend() {
   const path = String(globalThis.location?.pathname || "").toLowerCase();
-  return path === "/eleicoes" || path === "/eleicoes.html" || path.startsWith("/operacoes");
+  return path === "/eleicoes" || path === "/eleicoes.html" || path === "/portal" || path === "/portal.html" || path.startsWith("/operacoes");
 }
 
 export function dataAction(action, payload = {}) {
