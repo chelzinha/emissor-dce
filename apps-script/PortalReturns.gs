@@ -126,18 +126,6 @@ function finishPortalReturn_(userId, payload) {
     idempotencyKey: 'portal-return:' + portalReturnId,
     metadata: { pac: pac, sedex: sedex, invalid: invalid, matrix: matrixSummary }
   });
-  if (pac) recordOperationEvent_(userId, {
-    campaignId: campaignId, type: 'LABEL_GENERATED', quantity: pac, service: 'PAC',
-    sourceType: 'PORTAL_RETURN', sourceId: portalReturnId,
-    idempotencyKey: 'portal-return-labels-pac:' + portalReturnId,
-    metadata: { origin: 'PORTAL_POSTAL' }
-  });
-  if (sedex) recordOperationEvent_(userId, {
-    campaignId: campaignId, type: 'LABEL_GENERATED', quantity: sedex, service: 'SEDEX',
-    sourceType: 'PORTAL_RETURN', sourceId: portalReturnId,
-    idempotencyKey: 'portal-return-labels-sedex:' + portalReturnId,
-    metadata: { origin: 'PORTAL_POSTAL' }
-  });
   return {
     id: portalReturnId, status: status, total: rows.length, pac: pac, sedex: sedex,
     invalid: invalid, matrix: matrixSummary
@@ -252,14 +240,6 @@ function prepareProductionBatch_(userId, payload) {
   }]);
   updateRow_('PORTAL_RETURNS', portalReturn._rowNumber, { DOCUMENT_MODE: mode, STATUS: 'IN_PRODUCTION', UPDATED_AT: now });
   const volumes = createDeliveryVolumes_(campaignId, batchId, objects);
-  if (mode === 'DCE_AUTHORIZED') {
-    recordOperationEvent_(userId, {
-      campaignId: campaignId, type: 'DCE_PREPARED', quantity: objects.length,
-      sourceType: 'PRODUCTION_BATCH', sourceId: batchId,
-      idempotencyKey: 'production-dce-prepared:' + batchId,
-      metadata: { pac: pac, sedex: sedex, status: initialStatus }
-    });
-  }
   return {
     id: batchId, documentMode: mode, status: initialStatus,
     total: objects.length, pac: pac, sedex: sedex, volumes: volumes
