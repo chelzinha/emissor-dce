@@ -1,6 +1,7 @@
 import { callOperationsAppsScript } from './_shared/operations-apps-script.mjs';
 import { json, publicError } from './_shared/http.mjs';
 
+// Healthcheck temporário de homologação. Remover antes do merge em produção.
 export default async function handler(req) {
   if (req.method !== 'GET') return json({ ok: false, error: 'Método não permitido' }, 405);
   try {
