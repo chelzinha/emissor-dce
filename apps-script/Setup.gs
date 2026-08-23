@@ -43,6 +43,45 @@ function setApiToken(token) {
   return true;
 }
 
+function bootstrapOperationsProject() {
+  const setup = setupProject();
+  const properties = getScriptProperties_();
+  let token = String(properties.getProperty(DCE_CONFIG.PROPERTY_API_TOKEN) || '');
+  if (!token) {
+    token = (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, '');
+    setApiToken(token);
+  }
+
+  const webAppUrl = String(ScriptApp.getService().getUrl() || '');
+  const folder = DriveApp.getFolderById(setup.rootFolderId);
+  const bootstrapName = 'AGF_OPERACOES_BOOTSTRAP.json';
+  const previous = folder.getFilesByName(bootstrapName);
+  while (previous.hasNext()) previous.next().setTrashed(true);
+
+  const payload = {
+    appName: DCE_CONFIG.APP_NAME,
+    version: DCE_CONFIG.VERSION,
+    webAppUrl: webAppUrl,
+    apiToken: token,
+    spreadsheetId: setup.spreadsheetId,
+    spreadsheetUrl: setup.spreadsheetUrl,
+    rootFolderId: setup.rootFolderId,
+    rootFolderUrl: setup.rootFolderUrl,
+    createdAt: new Date().toISOString()
+  };
+  const bootstrapFile = folder.createFile(bootstrapName, JSON.stringify(payload, null, 2), MimeType.PLAIN_TEXT);
+  console.log('Bootstrap criado no Drive: ' + bootstrapFile.getId());
+  if (!webAppUrl) console.log('A URL do Web App ainda esta vazia. Implante o projeto como Web App e execute bootstrapOperationsProject() novamente.');
+  return {
+    ok: true,
+    bootstrapFileId: bootstrapFile.getId(),
+    bootstrapFileName: bootstrapName,
+    webAppUrlConfigured: Boolean(webAppUrl),
+    spreadsheetUrl: setup.spreadsheetUrl,
+    rootFolderUrl: setup.rootFolderUrl
+  };
+}
+
 function remapRowsByHeader_(existingHeaders, rows, expectedHeaders) {
   const index = {};
   existingHeaders.forEach(function(header, column) {

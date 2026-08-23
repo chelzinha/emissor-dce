@@ -12,3 +12,4 @@ dist/
 output/
 .clasp.json
 .clasprc.json
+.operations-apps-script-deploy/
