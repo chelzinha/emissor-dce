@@ -1,8 +1,8 @@
 const ROOT = document.querySelector('#elections-app');
 
 const CSV_FORMATS = Object.freeze({
-  'Receber nova base': 'CSV colunas mínimas: NOME; CEP; ENDEREÇO; NUMERO; BAIRRO; CIDADE; UF. Colunas opcionais aceitas: COMPLEMENTO; CPF; EMPRESA; SERVICO; CONTEUDO.',
-  'Importar retorno do Portal Postal': 'CSV do Portal Postal: OBJETO; SERVICO; DESTINATARIO; CPF_CNPJ; ENDERECO; NUM; COMPLEMENTO; BAIRRO; CIDADE; UF; CEP; CONTEUDO; CODIGO_PP.',
+  'Receber nova base': 'CSV colunas: NOME; CEP; ENDEREÇO; NUMERO; COMPLEMENTO; BAIRRO; CIDADE; UF. Colunas extras são preservadas.',
+  'Importar retorno do Portal Postal': 'CSV colunas: OBJETO; SERVICO; DESTINATARIO; CPF_CNPJ; ENDERECO; NUM; COMPLEMENTO; BAIRRO; CIDADE; UF; CEP; CONTEUDO; CODIGO_PP.',
   'Atualizar rastreamento': 'CSV colunas: SRO; STATUS; DESCRICAO; DATA_EVENTO; HORA; LOCAL.',
   'Tabela à vista PAC e SEDEX': 'CSV colunas: SERVICO; CEP_INICIAL; CEP_FINAL; PESO_INICIAL_G; PESO_FINAL_G; PRECO; PRAZO_DIAS; REGIAO.',
 });
