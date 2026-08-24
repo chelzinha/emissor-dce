@@ -74,7 +74,7 @@ export async function configureLabelSetup({ pdfFiles, initialSetup = null } = {}
       </div>
       <div class="label-stamp-column">
         <div><strong>2. Chancela da etiqueta</strong><p>Carregue a imagem que deve aparecer no espaço superior esquerdo da etiqueta final.</p></div>
-        <label class="label-stamp-upload"><input type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg" data-stamp><span>Selecionar chancela</span><small>PNG ou JPG. Prefira fundo branco ou transparente.</small></label>
+        <div class="label-stamp-upload"><input type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg" data-stamp><span>Selecionar chancela</span><small>PNG ou JPG. Prefira fundo branco ou transparente.</small></div>
         <div class="label-stamp-preview" data-stamp-preview>${setup.postageMarkDataUrl ? `<img src="${h(setup.postageMarkDataUrl)}" alt="Prévia da chancela">` : "<span>Nenhuma chancela carregada.</span>"}</div>
         <div class="label-stamp-name" data-stamp-name>${h(setup.postageMarkName || "")}</div>
         <div class="label-setup-checklist">

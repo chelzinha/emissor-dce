@@ -211,8 +211,8 @@ function uploadTemplate() {
   return `<section class="card portal-return-upload" id="portal-return-upload-card">
     <div class="section-title"><div><h2>Importar retorno do Portal Postal</h2><p>Selecione o CSV e os PDFs. Antes da auditoria, configure visualmente a etiqueta.</p></div><span class="return-security">Processamento dos PDFs no navegador</span></div>
     <div class="return-upload-grid">
-      <label class="return-file"><span>1. CSV das postagens</span><input id="portal-return-csv" type="file" accept=".csv,text/csv"><small>Contem SRO, destinatario, endereco, servico e dados da postagem.</small></label>
-      <label class="return-file"><span>2. PDF das etiquetas</span><input id="portal-return-pdfs" type="file" accept=".pdf,application/pdf" multiple><small>Use os PDFs originais exportados pelo Portal Postal.</small></label>
+      <div class="return-file"><span>1. CSV das postagens</span><input id="portal-return-csv" type="file" accept=".csv,text/csv"><small>Contem SRO, destinatario, endereco, servico e dados da postagem.</small></div>
+      <div class="return-file"><span>2. PDF das etiquetas</span><input id="portal-return-pdfs" type="file" accept=".pdf,application/pdf" multiple><small>Use os PDFs originais exportados pelo Portal Postal.</small></div>
     </div>
     <div class="return-label-setup">
       <div><strong>3. Configurar modelo da etiqueta</strong><small id="portal-label-setup-status" class="setup-pending">Pendente · marque o Data Matrix e carregue a chancela antes de auditar.</small></div>
