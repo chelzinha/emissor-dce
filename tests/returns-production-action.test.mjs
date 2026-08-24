@@ -4,19 +4,19 @@ import test from 'node:test';
 
 const release = fs.readFileSync(new URL('../src/elections-release-simplified.js', import.meta.url), 'utf8');
 
-test('retorno READY deixa claro que apenas escolhe a modalidade documental', () => {
+test('retorno pronto deixa claro que apenas escolhe a modalidade documental', () => {
   assert.match(release, /Usar Declaração Simplificada/);
-  assert.match(release, /Os PDFs são gerados na etapa Produção/);
+  assert.match(release, /Cria o lote de produção/);
 });
 
-test('retorno IN_PRODUCTION não exibe a declaração como botão desabilitado', () => {
+test('retorno em produção oferece continuação em vez de nova criação', () => {
   assert.match(release, /status === 'IN_PRODUCTION'/);
   assert.match(release, /Continuar na Produção/);
   assert.match(release, /data-simplified-return-action/);
-  assert.match(release, /productionNav\.click\(\)/);
+  assert.match(release, /continueToProduction/);
 });
 
-test('tela explica onde a etiqueta unificada é gerada e impressa', () => {
-  assert.match(release, /geração e impressão dos PDFs acontece em Produção/);
-  assert.match(release, /etiqueta unificada é gerada e impressa na etapa Produção/);
+test('status traduzido continua preservando o código técnico para a regra funcional', () => {
+  assert.match(release, /dataset\.statusCode/);
+  assert.match(release, /Modalidade operacional atual/);
 });
