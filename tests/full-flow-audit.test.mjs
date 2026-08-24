@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const api = fs.readFileSync(new URL('../src/api.js', import.meta.url), 'utf8');
 const baseFlow = fs.readFileSync(new URL('../src/elections-base-flow-v2.js', import.meta.url), 'utf8');
+const baseFlowCss = fs.readFileSync(new URL('../src/elections-base-flow-v2.css', import.meta.url), 'utf8');
 const approved = fs.readFileSync(new URL('../src/elections-approved-ui.js', import.meta.url), 'utf8');
 const simplified = fs.readFileSync(new URL('../src/elections-release-simplified.js', import.meta.url), 'utf8');
 const portalReturn = fs.readFileSync(new URL('../src/portal-return-service.js', import.meta.url), 'utf8');
@@ -31,6 +32,19 @@ test('proxy divide cada bloco de higienização em requisições menores que o l
   assert.match(api, /action === "cleaning\.process"/);
   assert.match(api, /rowIds\.slice\(index, index \+ CLEANING_REQUEST_CHUNK\)/);
   assert.match(api, /summary\.processed \+=/);
+});
+
+test('higienização mostra progresso vivo no mesmo box da base', () => {
+  assert.match(api, /onProgress/);
+  assert.match(baseFlow, /base-cleaning-progress/);
+  assert.match(baseFlow, /data-progress-completed/);
+  assert.match(baseFlow, /data-progress-remaining/);
+  assert.match(baseFlow, /data-progress-elapsed/);
+  assert.match(baseFlow, /data-progress-eta/);
+  assert.match(baseFlow, /Última atualização/);
+  assert.match(baseFlow, /setInterval\(\(\) => renderCleaning/);
+  assert.match(baseFlowCss, /base-cleaning-spinner/);
+  assert.match(baseFlowCss, /base-cleaning-bar/);
 });
 
 test('pendências de endereço têm revisão editável antes da postagem', () => {
