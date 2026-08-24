@@ -7,6 +7,16 @@ import {
   UF_CODES,
 } from "./constants.mjs";
 
+/** Data e hora atuais com o deslocamento de fuso local, formato do leiaute. */
+export function agoraComFusoLocal(data = new Date()) {
+  const pad = (n) => String(Math.floor(Math.abs(n))).padStart(2, "0");
+  const offsetMin = -data.getTimezoneOffset();
+  const sinal = offsetMin >= 0 ? "+" : "-";
+  const offset = `${sinal}${pad(offsetMin / 60)}:${pad(offsetMin % 60)}`;
+  return `${data.getFullYear()}-${pad(data.getMonth() + 1)}-${pad(data.getDate())}`
+    + `T${pad(data.getHours())}:${pad(data.getMinutes())}:${pad(data.getSeconds())}${offset}`;
+}
+
 export function digits(value) {
   return String(value ?? "").replace(/\D/g, "");
 }
@@ -103,8 +113,12 @@ export function normalizeDceDocument(input) {
   const series = String(Number(source.identification?.series ?? 0));
   const number = String(Number(source.identification?.number ?? 0));
   const tpAmb = String(source.identification?.environment ?? "2") === "1" ? "1" : "2";
+  // Regra B07-20 / rejeicao 704: a SEFAZ compara dhEmi com a hora de recebimento
+  // e tolera poucos minutos. Num lote de milhares, congelar a data na reserva
+  // faz os primeiros documentos chegarem atrasados. Quando o chamador nao envia
+  // dhEmi, ele e gerado AGORA, imediatamente antes da montagem e da assinatura.
   const emissionDateTime = cleanText(source.identification?.emissionDateTime, 30)
-    || new Date().toISOString().replace("Z", "+00:00");
+    || agoraComFusoLocal();
 
   if (!isValidCnpj(issuerCnpj)) errors.push("issuer.cnpj: CNPJ do emitente inválido");
   if (recipientDocumentType === "CNPJ" && !isValidCnpj(recipientDocument)) {

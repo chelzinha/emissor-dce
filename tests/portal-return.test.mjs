@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import {
   buildPortalReturnBackendRows,
   chunkRows,
@@ -86,4 +87,17 @@ test("monta payload para backend e divide em blocos", () => {
   assert.equal(backend.length, 2);
   assert.equal(backend[0].postal.OBJETO, "OY855189152BR");
   assert.deepEqual(chunkRows(Array.from({ length: 401 }), 200).map((part) => part.length), [200, 200, 1]);
+});
+
+test('falha ao guardar os PDFs interrompe o fluxo e avisa o usuario', () => {
+  const fonte = fs.readFileSync(new URL('../src/elections-portal-return-ui.js', import.meta.url), 'utf8');
+  // Antes: o erro ia so para o console, o usuario lia "registrado", a pagina
+  // recarregava e a Producao travava depois sem explicacao.
+  assert.match(fonte, /let cacheOk = false/);
+  assert.match(fonte, /cacheOk = true/);
+  assert.match(fonte, /if \(!cacheOk\)/);
+  assert.match(fonte, /os PDFs não ficaram salvos neste navegador/);
+  // o reload automatico so acontece quando o cache foi gravado
+  const trecho = fonte.slice(fonte.indexOf('if (!cacheOk)'));
+  assert.match(trecho, /return;[\s\S]*location\.reload/);
 });

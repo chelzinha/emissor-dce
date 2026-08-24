@@ -174,6 +174,7 @@ async function saveCurrentAnalysis() {
   const portalExportId = document.querySelector("#portal-export-link")?.value || "";
   const button = document.querySelector("#save-portal-return");
   if (button) button.disabled = true;
+  let cacheOk = false;
   try {
     setProgress("Registrando retorno", "Salvando objetos, área do Data Matrix e chancela");
     const saved = await savePortalReturn({
@@ -192,9 +193,28 @@ async function saveCurrentAnalysis() {
         csvSha256: currentAnalysis.csvSha256,
         labelSetup: currentLabelSetup,
       });
+      cacheOk = true;
     } catch (cacheError) {
+      // Os PDFs, a area do Data Matrix e a chancela vivem no IndexedDB deste
+      // navegador. Se a gravacao falhar por espaco, aba anonima ou bloqueio, a
+      // producao trava depois sem explicacao. Antes o erro ia so para o console,
+      // o usuario lia "registrado" e a pagina recarregava. Agora isso e visivel
+      // e o reload automatico e cancelado.
       console.warn("Nao foi possivel manter os PDFs e a configuração no cache local", cacheError);
+      const slot = document.querySelector("#portal-return-analysis");
+      if (slot) {
+        slot.innerHTML = `<div class="notice warn">
+          <strong>Retorno registrado, mas os PDFs não ficaram salvos neste navegador.</strong>
+          <p>Sem eles a etapa de Produção não consegue montar a etiqueta unificada.
+          Isso costuma acontecer em aba anônima, com pouco espaço em disco ou com
+          armazenamento bloqueado. Reimporte o retorno neste mesmo computador,
+          numa janela normal, antes de seguir para a Produção.</p>
+          <p><code>${h(String(cacheError?.message || cacheError))}</code></p>
+        </div>`;
+      }
+      notify("Retorno registrado, mas os PDFs não foram salvos. Veja o aviso antes de seguir.", "error");
     }
+    if (!cacheOk) { if (button) button.disabled = false; return; }
     notify(`Retorno registrado: ${number(saved.total)} objetos, status ${saved.status}.`, saved.status === "READY" ? "success" : "info");
     setTimeout(() => location.reload(), 900);
   } catch (error) {

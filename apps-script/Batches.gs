@@ -25,7 +25,12 @@ function prepareBatch_(userId, payload) {
         reference: String(row.ID), trackingCode: String(row.TRACKING_CODE), service: String(row.SERVICE),
         identification: {
           series: Number(company.SERIES || 0), number: firstNumber + index,
-          environment: environment, emissionDateTime: now,
+          // Regra B07-20: dhEmi nao pode ficar congelado no momento da reserva.
+          // Em lote grande a transmissao leva minutos ou horas e os primeiros
+          // documentos chegariam atrasados na SEFAZ, gerando rejeicao 704.
+          // O valor definitivo e atribuido pelo backend imediatamente antes de
+          // montar e assinar cada DC-e; este aqui e apenas o registro da reserva.
+          environment: environment, emissionDateTime: null, reservedAt: now,
           authorizationSite: '0', numericCode: numericCodes[index], processVersion: `EMISSOR-DCE-${DCE_CONFIG.VERSION}`
         },
         issuer: profile,

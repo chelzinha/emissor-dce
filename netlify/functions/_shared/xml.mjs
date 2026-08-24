@@ -20,6 +20,18 @@ function tag(name, value) {
   return `<${name}>${escapeXml(value)}</${name}>`;
 }
 
+/**
+ * Conteudo em CDATA, sem escapar o e-comercial.
+ *
+ * Regra ZX02-10 do Anexo I: o QR-Code nao pode conter sequencia de escape
+ * para o "&". Passar a URL por escapeXml gera &amp; e provoca rejeicao 813.
+ * A nota da propria regra diz: "Deve-se usar o CDATA".
+ */
+function cdataTag(name, value) {
+  const conteudo = String(value ?? "").replace(/\]\]>/g, "]]]]><![CDATA[>");
+  return `<${name}><![CDATA[${conteudo}]]></${name}>`;
+}
+
 function optionalTag(name, value) {
   return value == null || value === "" ? "" : tag(name, value);
 }
@@ -135,7 +147,7 @@ export function buildUnsignedDce(document, options = {}) {
 
   const supplemental = [
     "<infDCeSupl>",
-    tag("qrCodDCe", qrCode),
+    cdataTag("qrCodDCe", qrCode),
     tag("urlChave", config.qrCodeUrl),
     "</infDCeSupl>",
   ].join("");
