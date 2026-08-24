@@ -2,10 +2,13 @@ import "./elections-portal-return.css";
 import { analyzePortalReturn, savePortalReturn } from "./portal-return-service.js";
 import { cachePortalReturnAssets } from "./portal-assets.js";
 import { loadPostalVendors } from "./postal-vendors.js";
+import { configureLabelSetup } from "./label-setup-ui.js";
+import { isLabelSetupComplete } from "./label-setup.js";
 
 const ROOT_SELECTOR = "#elections-app";
 let currentAnalysis = null;
 let currentFiles = null;
+let currentLabelSetup = null;
 let mountedFor = null;
 
 function h(value) {
@@ -58,6 +61,35 @@ function matrixClass(status) {
   return "bad";
 }
 
+function updateLabelSetupStatus() {
+  const status = document.querySelector("#portal-label-setup-status");
+  const button = document.querySelector("#configure-portal-label");
+  const analyze = document.querySelector("#analyze-portal-return");
+  const ready = isLabelSetupComplete(currentLabelSetup);
+  if (status) {
+    status.className = ready ? "setup-ready" : "setup-pending";
+    status.textContent = ready
+      ? `Configuração pronta · Data Matrix marcado · Chancela ${currentLabelSetup.postageMarkName || "carregada"}`
+      : "Pendente · marque o Data Matrix e carregue a chancela antes de auditar.";
+  }
+  if (button) button.textContent = ready ? "Revisar configuração" : "Configurar etiqueta";
+  if (analyze) analyze.disabled = !ready;
+}
+
+async function configureCurrentLabel() {
+  const pdfFiles = document.querySelector("#portal-return-pdfs")?.files;
+  if (!pdfFiles?.length) return notify("Selecione primeiro o PDF das etiquetas do Portal Postal.", "error");
+  try {
+    const configured = await configureLabelSetup({ pdfFiles, initialSetup: currentLabelSetup });
+    if (!configured) return;
+    currentLabelSetup = configured;
+    currentAnalysis = null;
+    document.querySelector("#portal-return-analysis")?.replaceChildren();
+    updateLabelSetupStatus();
+    notify("Configuração da etiqueta salva. Agora você pode auditar o Data Matrix.", "success");
+  } catch (error) { notify(error.message, "error"); }
+}
+
 function renderAnalysis(analysis) {
   const slot = document.querySelector("#portal-return-analysis");
   if (!slot) return;
@@ -69,7 +101,7 @@ function renderAnalysis(analysis) {
 
   slot.innerHTML = `<div class="return-analysis">
     <div class="return-analysis-head">
-      <div><p class="eyebrow">AUDITORIA CONCLUIDA</p><h3>${number(summary.total)} objetos encontrados</h3><p>CSV, paginas dos PDFs e Data Matrix foram cruzados pelo SRO.</p></div>
+      <div><p class="eyebrow">AUDITORIA CONCLUIDA</p><h3>${number(summary.total)} objetos encontrados</h3><p>CSV, paginas dos PDFs e Data Matrix foram cruzados pelo SRO usando a área marcada manualmente.</p></div>
       <span class="return-ready ${summary.readyForProduction ? "ok" : "bad"}">${summary.readyForProduction ? "PRONTO PARA REGISTRO" : "REVISAR PENDENCIAS"}</span>
     </div>
     <div class="return-metrics">
@@ -88,12 +120,14 @@ function renderAnalysis(analysis) {
     <div class="return-actions">
       <button id="save-portal-return" class="primary">Registrar retorno no sistema</button>
       <button id="reanalyze-portal-return" class="ghost">Analisar novamente</button>
+      <button id="reconfigure-portal-label" class="ghost">Reconfigurar etiqueta</button>
     </div>
-    <p class="return-footnote">O registro pode ser salvo com pendencias para auditoria, mas somente um retorno <strong>READY</strong> sera liberado para Declaracao Simplificada ou DC-e.</p>
+    <p class="return-footnote">A região marcada e a chancela serão mantidas neste navegador e reutilizadas na etiqueta teste, na conferência de 100% dos Data Matrix e nos PDFs de produção.</p>
   </div>`;
 
   slot.querySelector("#save-portal-return")?.addEventListener("click", saveCurrentAnalysis);
   slot.querySelector("#reanalyze-portal-return")?.addEventListener("click", () => runAnalysis());
+  slot.querySelector("#reconfigure-portal-label")?.addEventListener("click", configureCurrentLabel);
 }
 
 async function runAnalysis() {
@@ -101,6 +135,7 @@ async function runAnalysis() {
   const pdfFiles = document.querySelector("#portal-return-pdfs")?.files;
   if (!csvFile) return notify("Selecione o CSV das postagens exportado pelo Portal Postal.", "error");
   if (!pdfFiles?.length) return notify("Selecione o PDF ou PDFs das etiquetas do Portal Postal.", "error");
+  if (!isLabelSetupComplete(currentLabelSetup)) return notify("Configure a área do Data Matrix e a chancela antes da auditoria.", "error");
 
   currentAnalysis = null;
   currentFiles = { csvFile, pdfFiles: [...pdfFiles] };
@@ -110,12 +145,13 @@ async function runAnalysis() {
   try {
     setProgress("Carregando leitor local", "Preparando pdf.js e ZXing no navegador");
     const { pdfjsLib, ZXing } = await loadPostalVendors();
-    setProgress("Auditando etiquetas", "Lendo paginas e tentando decodificar o Data Matrix");
+    setProgress("Auditando etiquetas", "Usando a área do Data Matrix marcada manualmente");
     currentAnalysis = await analyzePortalReturn({
       csvFile,
       pdfFiles,
       pdfjsLib,
       ZXing,
+      region: currentLabelSetup.matrixRegion,
       onProgress: (progress) => {
         if (progress.stage === "matrix") {
           setProgress("Auditando Data Matrix", `${number(progress.processed)} de ${number(progress.totalPages)} paginas`);
@@ -134,11 +170,12 @@ async function saveCurrentAnalysis() {
   const cid = campaignId();
   if (!cid) return notify("Selecione uma campanha.", "error");
   if (!currentAnalysis || !currentFiles) return notify("Analise o retorno antes de salvar.", "error");
+  if (!isLabelSetupComplete(currentLabelSetup)) return notify("A configuração da etiqueta está incompleta.", "error");
   const portalExportId = document.querySelector("#portal-export-link")?.value || "";
   const button = document.querySelector("#save-portal-return");
   if (button) button.disabled = true;
   try {
-    setProgress("Registrando retorno", "Salvando objetos e auditoria no diario operacional");
+    setProgress("Registrando retorno", "Salvando objetos, área do Data Matrix e chancela");
     const saved = await savePortalReturn({
       campaignId: cid,
       portalExportId,
@@ -153,9 +190,10 @@ async function saveCurrentAnalysis() {
         csvFile: currentFiles.csvFile,
         pdfFiles: currentFiles.pdfFiles,
         csvSha256: currentAnalysis.csvSha256,
+        labelSetup: currentLabelSetup,
       });
     } catch (cacheError) {
-      console.warn("Nao foi possivel manter os PDFs no cache local", cacheError);
+      console.warn("Nao foi possivel manter os PDFs e a configuração no cache local", cacheError);
     }
     notify(`Retorno registrado: ${number(saved.total)} objetos, status ${saved.status}.`, saved.status === "READY" ? "success" : "info");
     setTimeout(() => location.reload(), 900);
@@ -171,12 +209,16 @@ function uploadTemplate() {
     label: button.closest("tr")?.querySelector("td:nth-child(2)")?.textContent?.trim() || button.dataset.downloadExport,
   }));
   return `<section class="card portal-return-upload" id="portal-return-upload-card">
-    <div class="section-title"><div><h2>Importar retorno do Portal Postal</h2><p>Selecione o CSV das postagens e o PDF das etiquetas originais.</p></div><span class="return-security">Processamento dos PDFs no navegador</span></div>
+    <div class="section-title"><div><h2>Importar retorno do Portal Postal</h2><p>Selecione o CSV e os PDFs. Antes da auditoria, configure visualmente a etiqueta.</p></div><span class="return-security">Processamento dos PDFs no navegador</span></div>
     <div class="return-upload-grid">
       <label class="return-file"><span>1. CSV das postagens</span><input id="portal-return-csv" type="file" accept=".csv,text/csv"><small>Contem SRO, destinatario, endereco, servico e dados da postagem.</small></label>
-      <label class="return-file"><span>2. PDF das etiquetas</span><input id="portal-return-pdfs" type="file" accept=".pdf,application/pdf" multiple><small>O Data Matrix sera recortado das etiquetas originais e associado pelo SRO.</small></label>
+      <label class="return-file"><span>2. PDF das etiquetas</span><input id="portal-return-pdfs" type="file" accept=".pdf,application/pdf" multiple><small>Use os PDFs originais exportados pelo Portal Postal.</small></label>
     </div>
-    <div class="return-link-row"><label class="field"><span>Relacionar a exportacao anterior (opcional)</span><select id="portal-export-link"><option value="">Sem vinculo manual</option>${exports.map((item) => `<option value="${h(item.id)}">${h(item.label)}</option>`).join("")}</select></label><button id="analyze-portal-return" class="primary">Analisar CSV + PDF</button></div>
+    <div class="return-label-setup">
+      <div><strong>3. Configurar modelo da etiqueta</strong><small id="portal-label-setup-status" class="setup-pending">Pendente · marque o Data Matrix e carregue a chancela antes de auditar.</small></div>
+      <button id="configure-portal-label" type="button" class="secondary">Configurar etiqueta</button>
+    </div>
+    <div class="return-link-row"><label class="field"><span>Relacionar a exportacao anterior (opcional)</span><select id="portal-export-link"><option value="">Sem vinculo manual</option>${exports.map((item) => `<option value="${h(item.id)}">${h(item.label)}</option>`).join("")}</select></label><button id="analyze-portal-return" class="primary" disabled>4. Auditar CSV + PDF</button></div>
     <div id="portal-return-live-status" class="return-live-status" hidden></div>
     <div id="portal-return-analysis"></div>
   </section>`;
@@ -191,6 +233,11 @@ function mount() {
   if (!page || page.querySelector("#portal-return-upload-card")) return;
   const cid = campaignId();
   const key = `${cid}:returns`;
+  if (mountedFor !== key) {
+    currentAnalysis = null;
+    currentFiles = null;
+    currentLabelSetup = null;
+  }
   mountedFor = key;
   const firstCard = page.querySelector(":scope > .card");
   const wrapper = document.createElement("div");
@@ -199,7 +246,16 @@ function mount() {
   if (firstCard) page.insertBefore(upload, firstCard);
   else page.appendChild(upload);
   page.querySelector(".notice.warn")?.remove();
+  upload.querySelector("#configure-portal-label")?.addEventListener("click", configureCurrentLabel);
   upload.querySelector("#analyze-portal-return")?.addEventListener("click", runAnalysis);
+  upload.querySelector("#portal-return-pdfs")?.addEventListener("change", () => {
+    currentAnalysis = null;
+    currentFiles = null;
+    currentLabelSetup = null;
+    upload.querySelector("#portal-return-analysis")?.replaceChildren();
+    updateLabelSetupStatus();
+  });
+  updateLabelSetupStatus();
 }
 
 const observer = new MutationObserver(() => queueMicrotask(mount));
