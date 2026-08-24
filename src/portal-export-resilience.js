@@ -1,4 +1,5 @@
 import { dataAction, textDownload } from './api.js';
+import { PORTAL_CSV_MAX_ROWS, splitPortalCsv } from './elections-portal-csv-limit-ui.js';
 
 const ROOT = document.querySelector('#elections-app');
 const fmt = (value) => new Intl.NumberFormat('pt-BR').format(Number(value || 0));
@@ -11,7 +12,7 @@ function notify(message, type = 'info') {
   box.textContent = message;
   box.className = `elections-toast show ${type}`;
   clearTimeout(box._portalExportTimer);
-  box._portalExportTimer = setTimeout(() => { box.className = 'elections-toast'; }, 5200);
+  box._portalExportTimer = setTimeout(() => { box.className = 'elections-toast'; }, 6500);
 }
 
 function exportId(row) { return String(row?.ID || row?.id || ''); }
@@ -55,19 +56,25 @@ function statusHost(card) {
 function showWorking(card, message) {
   const host = statusHost(card);
   if (!host) return;
-  host.innerHTML = `<div class="notice"><strong>${esc(message)}</strong><br><small>Não feche esta tela até o arquivo ficar disponível.</small></div>`;
+  host.innerHTML = `<div class="notice"><strong>${esc(message)}</strong><br><small>Não feche esta tela até os arquivos ficarem disponíveis.</small></div>`;
 }
 
-function showSuccess(card, record, recovered = false) {
+function partSummary(parts) {
+  if (!parts?.length) return '';
+  if (parts.length === 1) return `1 arquivo com ${fmt(parts[0].count)} cadastros`;
+  return `${parts.length} arquivos · ${parts.map((part) => fmt(part.count)).join(' + ')} cadastros`;
+}
+
+function showSuccess(card, record, recovered = false, parts = []) {
   const id = exportId(record);
-  const name = exportFileName(record);
-  const total = exportTotal(record);
+  const total = exportTotal(record) || parts.reduce((sum, part) => sum + Number(part.count || 0), 0);
   const service = exportService(record);
   const form = card?.querySelector('.form-grid');
   if (form) form.hidden = true;
   const host = statusHost(card);
   if (!host) return;
-  host.innerHTML = `<div class="notice"><strong>CSV pronto para o Portal Postal.</strong><br><span>${esc(name)}${total ? ` · ${fmt(total)} cadastros` : ''}${service ? ` · ${esc(service)}` : ''}</span>${recovered ? '<br><small>O arquivo já havia sido salvo e foi recuperado do histórico.</small>' : ''}<div style="margin-top:10px"><button type="button" class="secondary" data-redownload-export="${esc(id)}">Baixar CSV novamente</button></div></div>`;
+  const filesText = partSummary(parts);
+  host.innerHTML = `<div class="notice"><strong>Arquivos prontos para o Portal Postal.</strong><br><span>${total ? `${fmt(total)} cadastros` : ''}${service ? ` · ${esc(service)}` : ''}${filesText ? ` · ${esc(filesText)}` : ''}</span><br><small>Cada CSV possui no máximo ${fmt(PORTAL_CSV_MAX_ROWS)} cadastros e repete o cabeçalho exigido pelo Portal.</small>${recovered ? '<br><small>O arquivo original já havia sido salvo e foi recuperado do histórico.</small>' : ''}<div style="margin-top:10px"><button type="button" class="secondary" data-redownload-export="${esc(id)}">Baixar arquivos novamente</button></div></div>`;
 }
 
 function showError(card, message) {
@@ -76,12 +83,18 @@ function showError(card, message) {
   host.innerHTML = `<div class="notice warn"><strong>Não foi possível concluir a exportação.</strong><br><span>${esc(message)}</span></div>`;
 }
 
+function downloadParts(content, fileName) {
+  const parts = splitPortalCsv(content, fileName, PORTAL_CSV_MAX_ROWS);
+  parts.forEach((part) => textDownload(part.content, part.fileName, 'text/csv;charset=utf-8'));
+  return parts;
+}
+
 async function downloadStored(record) {
   const id = exportId(record);
   if (!id) throw new Error('Exportação sem identificador para download.');
   const file = await dataAction('portal.export.file', { campaignId: campaignId(), exportId: id });
-  textDownload(file.content, file.fileName, 'text/csv;charset=utf-8');
-  return file;
+  const parts = downloadParts(file.content, file.fileName);
+  return { file, parts };
 }
 
 async function findStoredExport(addressListId) {
@@ -99,22 +112,22 @@ async function generatePortalCsv(button) {
   if (!addressListId || !content) return notify('Selecione uma base e informe o conteúdo.', 'error');
 
   button.disabled = true;
-  button.textContent = 'Gerando CSV…';
-  showWorking(card, 'Gerando e salvando o CSV do Portal Postal…');
+  button.textContent = 'Gerando arquivos…';
+  showWorking(card, `Gerando CSVs em grupos de até ${fmt(PORTAL_CSV_MAX_ROWS)} cadastros…`);
   try {
     const result = await dataAction('portal.export', { campaignId: campaignId(), addressListId, service, content });
-    textDownload(result.csv, result.fileName, 'text/csv;charset=utf-8');
+    const parts = downloadParts(result.csv, result.fileName);
     markExported(addressListId, result);
-    showSuccess(card, result, Boolean(result.recovered));
-    notify(`${fmt(result.total)} cadastros exportados para ${service}.`, 'success');
+    showSuccess(card, result, Boolean(result.recovered), parts);
+    notify(`${fmt(result.total)} cadastros exportados em ${parts.length} arquivo${parts.length > 1 ? 's' : ''}.`, 'success');
   } catch (error) {
     try {
       const stored = await findStoredExport(addressListId);
       if (stored) {
-        await downloadStored(stored);
+        const downloaded = await downloadStored(stored);
         markExported(addressListId, stored);
-        showSuccess(card, stored, true);
-        notify('O CSV já havia sido gerado. Recuperei o arquivo salvo no histórico.', 'success');
+        showSuccess(card, stored, true, downloaded.parts);
+        notify(`A exportação já havia sido concluída. Baixei ${downloaded.parts.length} arquivo${downloaded.parts.length > 1 ? 's' : ''} dentro do limite do Portal.`, 'success');
         return;
       }
     } catch {}
@@ -128,10 +141,25 @@ async function generatePortalCsv(button) {
 async function redownloadPortalCsv(button) {
   button.disabled = true;
   const original = button.textContent;
-  button.textContent = 'Baixando…';
+  button.textContent = 'Preparando arquivos…';
   try {
-    await downloadStored({ ID: button.dataset.redownloadExport });
-    notify('CSV recuperado do histórico.', 'success');
+    const downloaded = await downloadStored({ ID: button.dataset.redownloadExport });
+    notify(`Download preparado em ${downloaded.parts.length} arquivo${downloaded.parts.length > 1 ? 's' : ''} de até ${fmt(PORTAL_CSV_MAX_ROWS)} cadastros.`, 'success');
+  } catch (error) {
+    notify(error.message, 'error');
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
+  }
+}
+
+async function downloadPortalHistory(button) {
+  button.disabled = true;
+  const original = button.textContent;
+  button.textContent = 'Preparando arquivos…';
+  try {
+    const downloaded = await downloadStored({ ID: button.dataset.downloadExport });
+    notify(`Download preparado em ${downloaded.parts.length} arquivo${downloaded.parts.length > 1 ? 's' : ''} de até ${fmt(PORTAL_CSV_MAX_ROWS)} cadastros.`, 'success');
   } catch (error) {
     notify(error.message, 'error');
   } finally {
@@ -143,7 +171,15 @@ async function redownloadPortalCsv(button) {
 async function enhanceExportedCard() {
   const page = ROOT?.querySelector('.page');
   const card = page?.querySelector('#base-export-card');
-  if (!card || card.dataset.exportRecoveryMounted === '1') return;
+  if (!card) return;
+
+  const description = card.querySelector('.section-title p');
+  if (description && description.dataset.portalLimitCopy !== '1') {
+    description.dataset.portalLimitCopy = '1';
+    description.textContent = `Depois da higienização, defina serviço e conteúdo. O sistema divide automaticamente o download em CSVs de até ${fmt(PORTAL_CSV_MAX_ROWS)} cadastros.`;
+  }
+
+  if (card.dataset.exportRecoveryMounted === '1') return;
   const text = card.textContent || '';
   if (!/base já foi exportada|próximo passo é o Portal Postal/i.test(text)) return;
   card.dataset.exportRecoveryMounted = '1';
@@ -151,9 +187,21 @@ async function enhanceExportedCard() {
     const exports = await dataAction('portal.exports.list', { campaignId: campaignId() });
     if (!exports?.length) return;
     const host = statusHost(card);
-    host.innerHTML = `<div class="notice"><strong>Arquivos já gerados</strong><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">${exports.map((row) => `<button type="button" class="secondary" data-redownload-export="${esc(exportId(row))}">${esc(exportService(row) || 'CSV')} · ${esc(exportFileName(row))}</button>`).join('')}</div></div>`;
+    host.innerHTML = `<div class="notice"><strong>Arquivos já gerados</strong><br><small>Ao baixar, bases com mais de ${fmt(PORTAL_CSV_MAX_ROWS)} cadastros serão divididas automaticamente.</small><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">${exports.map((row) => `<button type="button" class="secondary" data-redownload-export="${esc(exportId(row))}">${esc(exportService(row) || 'CSV')} · ${esc(exportFileName(row))}</button>`).join('')}</div></div>`;
   } catch {
     card.dataset.exportRecoveryMounted = '';
+  }
+}
+
+function decoratePortalHistory() {
+  const page = ROOT?.querySelector('.page');
+  if (!page) return;
+  const title = [...page.querySelectorAll('h1')].find((node) => /Arquivos enviados ao Portal/i.test(node.textContent || ''));
+  if (!title) return;
+  const description = title.parentElement?.querySelector('p:not(.eyebrow)');
+  if (description && description.dataset.portalLimitCopy !== '1') {
+    description.dataset.portalLimitCopy = '1';
+    description.textContent = `Os CSVs seguem o layout do Portal Postal. Downloads com mais de ${fmt(PORTAL_CSV_MAX_ROWS)} cadastros são divididos automaticamente em partes numeradas.`;
   }
 }
 
@@ -170,6 +218,13 @@ document.addEventListener('click', (event) => {
     event.preventDefault();
     event.stopImmediatePropagation();
     redownloadPortalCsv(redownload);
+    return;
+  }
+  const history = event.target.closest?.('[data-download-export]');
+  if (history) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    downloadPortalHistory(history);
   }
 }, true);
 
@@ -177,7 +232,12 @@ let scheduled = false;
 const observer = new MutationObserver(() => {
   if (scheduled) return;
   scheduled = true;
-  queueMicrotask(() => { scheduled = false; enhanceExportedCard(); });
+  queueMicrotask(() => {
+    scheduled = false;
+    enhanceExportedCard();
+    decoratePortalHistory();
+  });
 });
 if (ROOT) observer.observe(ROOT, { childList: true, subtree: true });
 enhanceExportedCard();
+decoratePortalHistory();
