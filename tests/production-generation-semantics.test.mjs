@@ -12,11 +12,12 @@ test('retorno do Portal não antecipa etiqueta gerada nem DC-e preparada',()=>{
 
 test('baixa LABEL_GENERATED acontece depois da geração do PDF final do volume',()=>{
   const generatedPdf=documentsUi.indexOf('generateProductionVolumePdf');
-  const event=documentsUi.indexOf("type:'LABEL_GENERATED'");
+  const eventMatch=/type:\s*'LABEL_GENERATED'/.exec(documentsUi);
+  const event=eventMatch?.index??-1;
   assert.ok(generatedPdf>=0);
   assert.ok(event>generatedPdf);
-  assert.match(documentsUi,/idempotencyKey:`label-generated-volume:/);
-  assert.match(documentsUi,/sourceType:'DELIVERY_VOLUME'/);
+  assert.match(documentsUi,/idempotencyKey:\s*`label-generated-volume:/);
+  assert.match(documentsUi,/sourceType:\s*'DELIVERY_VOLUME'/);
 });
 
 test('etiqueta teste não registra LABEL_GENERATED',()=>{
