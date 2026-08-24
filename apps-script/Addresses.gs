@@ -125,6 +125,11 @@ function validateCleanAddress_(row) {
   if (!row.district) issues.push({ field: 'BAIRRO', code: 'REQUIRED', severity: 'ERROR', message: 'Bairro obrigatorio.' });
   if (!row.city) issues.push({ field: 'CIDADE', code: 'REQUIRED', severity: 'ERROR', message: 'Cidade obrigatoria.' });
   if (!/^[A-Z]{2}$/.test(row.uf)) issues.push({ field: 'UF', code: 'INVALID_UF', severity: 'ERROR', message: 'UF invalida.' });
+  return issues;
+}
+
+function validatePortalExportRow_(row) {
+  const issues = validateCleanAddress_(row).slice();
   if (['PAC', 'SEDEX'].indexOf(row.service) === -1) issues.push({ field: 'SERVICO', code: 'INVALID_SERVICE', severity: 'ERROR', message: 'Servico deve ser PAC ou SEDEX.' });
   if (!row.content) issues.push({ field: 'CONTEUDO', code: 'REQUIRED', severity: 'ERROR', message: 'Conteudo obrigatorio.' });
   return issues;
@@ -270,8 +275,10 @@ function exportPortalPostal_(userId, payload) {
   const campaignId = String(payload.campaignId || '');
   const listId = String(payload.addressListId || '');
   const service = String(payload.service || '').toUpperCase();
+  const content = cleanText_(payload.content || '');
   requireCampaignAccess_(campaignId, userId, ['AGENCY_ADMIN']);
   if (['PAC', 'SEDEX'].indexOf(service) === -1) throw new Error('Escolha PAC ou SEDEX para a exportacao.');
+  if (!content) throw new Error('Informe o conteudo antes de exportar para o Portal Postal.');
   const list = findRow_('ADDRESS_LISTS', function(row) {
     return String(row.ID) === listId && String(row.CAMPAIGN_ID) === campaignId;
   });
@@ -279,14 +286,17 @@ function exportPortalPostal_(userId, payload) {
   const selectedIds = Array.isArray(payload.rowIds) ? payload.rowIds.map(String) : [];
   const sourceRows = addressRowsForList_(campaignId, listId).filter(function(row) {
     if (String(row.STATUS) !== 'READY' || String(row.PORTAL_EXPORT_ID || '')) return false;
-    const clean = safeJsonParse_(row.CLEANED_JSON, {});
-    if (String(clean.service || '').toUpperCase() !== service) return false;
     return !selectedIds.length || selectedIds.indexOf(String(row.ID)) !== -1;
   });
-  if (!sourceRows.length) throw new Error('Nenhum cadastro pronto para exportacao ' + service + '.');
-  const cleanRows = sourceRows.map(function(row) { return normalizePortalCandidate_(safeJsonParse_(row.CLEANED_JSON, {}), {}); });
+  if (!sourceRows.length) throw new Error('Nenhum cadastro higienizado e disponivel para exportacao.');
+  const cleanRows = sourceRows.map(function(row) {
+    const clean = normalizePortalCandidate_(safeJsonParse_(row.CLEANED_JSON, {}), {});
+    clean.service = service;
+    clean.content = content;
+    return clean;
+  });
   cleanRows.forEach(function(row, index) {
-    const issues = validateCleanAddress_(row);
+    const issues = validatePortalExportRow_(row);
     if (issues.length) throw new Error('O cadastro ' + (index + 1) + ' ainda possui pendencias para o Portal Postal.');
   });
   const csv = buildPortalCsv_(cleanRows);
@@ -303,11 +313,15 @@ function exportPortalPostal_(userId, payload) {
     TOTAL_ROWS: sourceRows.length, FILE_NAME: fileName, FILE_ID: file.getId(), SHA256: hash,
     CREATED_BY: userId, CREATED_AT: now
   }]);
-  sourceRows.forEach(function(row) { updateRow_('ADDRESS_ROWS', row._rowNumber, { PORTAL_EXPORT_ID: exportId, UPDATED_AT: now }); });
+  sourceRows.forEach(function(row, index) {
+    updateRow_('ADDRESS_ROWS', row._rowNumber, {
+      CLEANED_JSON: cleanRows[index], PORTAL_EXPORT_ID: exportId, UPDATED_AT: now
+    });
+  });
   recordOperationEvent_(userId, {
     campaignId: campaignId, type: 'PORTAL_CSV_EXPORTED', quantity: sourceRows.length, service: service,
     sourceType: 'PORTAL_EXPORT', sourceId: exportId, idempotencyKey: 'portal-export:' + exportId,
-    metadata: { fileName: fileName, sha256: hash, addressListId: listId }
+    metadata: { fileName: fileName, sha256: hash, addressListId: listId, content: content }
   });
   return { id: exportId, service: service, total: sourceRows.length, fileName: fileName, fileId: file.getId(), sha256: hash, csv: csv };
 }
