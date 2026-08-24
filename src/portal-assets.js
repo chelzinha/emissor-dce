@@ -22,7 +22,7 @@ function requestResult(request) {
   });
 }
 
-export async function cachePortalReturnAssets({ portalReturnId, campaignId, csvFile, pdfFiles, csvSha256 }) {
+export async function cachePortalReturnAssets({ portalReturnId, campaignId, csvFile, pdfFiles, csvSha256, labelSetup = null }) {
   if (!portalReturnId) throw new Error("Retorno do Portal nao informado para cache local.");
   const db = await openDb();
   try {
@@ -34,10 +34,11 @@ export async function cachePortalReturnAssets({ portalReturnId, campaignId, csvF
       csvSha256: String(csvSha256 || ""),
       csvFile: csvFile || null,
       pdfFiles: [...(pdfFiles || [])],
+      labelSetup: labelSetup || null,
       cachedAt: new Date().toISOString(),
     };
     await requestResult(store.put(record));
-    return { portalReturnId, cachedAt: record.cachedAt, pdfCount: record.pdfFiles.length };
+    return { portalReturnId, cachedAt: record.cachedAt, pdfCount: record.pdfFiles.length, labelSetup: record.labelSetup };
   } finally { db.close(); }
 }
 
@@ -46,6 +47,20 @@ export async function getPortalReturnAssets(portalReturnId) {
   try {
     const transaction = db.transaction(STORE, "readonly");
     return await requestResult(transaction.objectStore(STORE).get(String(portalReturnId || ""))) || null;
+  } finally { db.close(); }
+}
+
+export async function updatePortalReturnLabelSetup(portalReturnId, labelSetup) {
+  if (!portalReturnId) throw new Error("Retorno do Portal nao informado.");
+  const db = await openDb();
+  try {
+    const transaction = db.transaction(STORE, "readwrite");
+    const store = transaction.objectStore(STORE);
+    const current = await requestResult(store.get(String(portalReturnId))) || null;
+    if (!current) throw new Error("Os PDFs originais deste retorno nao estao disponiveis neste navegador.");
+    const record = { ...current, labelSetup: labelSetup || null, cachedAt: new Date().toISOString() };
+    await requestResult(store.put(record));
+    return { portalReturnId, labelSetup: record.labelSetup, cachedAt: record.cachedAt };
   } finally { db.close(); }
 }
 
@@ -60,14 +75,15 @@ export async function deletePortalReturnAssets(portalReturnId) {
 export async function portalReturnAssetsStatus(portalReturnId) {
   try {
     const record = await getPortalReturnAssets(portalReturnId);
-    if (!record) return { available: false, pdfCount: 0, cachedAt: "" };
+    if (!record) return { available: false, pdfCount: 0, cachedAt: "", labelSetupConfigured: false };
     return {
       available: Boolean(record.pdfFiles?.length),
       pdfCount: Number(record.pdfFiles?.length || 0),
       cachedAt: String(record.cachedAt || ""),
       csvSha256: String(record.csvSha256 || ""),
+      labelSetupConfigured: Boolean(record.labelSetup?.matrixRegion && record.labelSetup?.postageMarkDataUrl),
     };
   } catch {
-    return { available: false, pdfCount: 0, cachedAt: "" };
+    return { available: false, pdfCount: 0, cachedAt: "", labelSetupConfigured: false };
   }
 }

@@ -12,7 +12,7 @@ test('exportação do Portal é recuperável e não depende de reload imediato',
   assert.match(exportUi, /stopImmediatePropagation/);
   assert.match(exportUi, /portal\.export\.file/);
   assert.match(exportUi, /portal\.exports\.list/);
-  assert.match(exportUi, /Baixar CSV novamente/);
+  assert.match(exportUi, /Baixar arquivos novamente/);
   assert.doesNotMatch(exportUi, /location\.reload/);
 });
 
