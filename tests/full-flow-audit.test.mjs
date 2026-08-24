@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
 
+const api = fs.readFileSync(new URL('../src/api.js', import.meta.url), 'utf8');
 const baseFlow = fs.readFileSync(new URL('../src/elections-base-flow-v2.js', import.meta.url), 'utf8');
 const approved = fs.readFileSync(new URL('../src/elections-approved-ui.js', import.meta.url), 'utf8');
 const simplified = fs.readFileSync(new URL('../src/elections-release-simplified.js', import.meta.url), 'utf8');
@@ -23,6 +24,13 @@ test('higienização percorre todos os registros RAW em blocos internos sem pedi
   assert.match(baseFlow, /while \(true\)/);
   assert.match(baseFlow, /Higienizar base/);
   assert.doesNotMatch(approved, /Higienizar próximo bloco/);
+});
+
+test('proxy divide cada bloco de higienização em requisições menores que o limite técnico', () => {
+  assert.match(api, /CLEANING_REQUEST_CHUNK = 25/);
+  assert.match(api, /action === "cleaning\.process"/);
+  assert.match(api, /rowIds\.slice\(index, index \+ CLEANING_REQUEST_CHUNK\)/);
+  assert.match(api, /summary\.processed \+=/);
 });
 
 test('pendências de endereço têm revisão editável antes da postagem', () => {
