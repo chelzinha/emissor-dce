@@ -5,7 +5,7 @@ import test from 'node:test';
 const api = fs.readFileSync(new URL('../src/api.js', import.meta.url), 'utf8');
 const baseFlow = fs.readFileSync(new URL('../src/elections-base-flow-v2.js', import.meta.url), 'utf8');
 const baseFlowCss = fs.readFileSync(new URL('../src/elections-base-flow-v2.css', import.meta.url), 'utf8');
-const approved = fs.readFileSync(new URL('../src/elections-approved-ui.js', import.meta.url), 'utf8');
+const approved = fs.readFileSync(new URL('../src/elections-stage-shell-ui.js', import.meta.url), 'utf8');
 const simplified = fs.readFileSync(new URL('../src/elections-release-simplified.js', import.meta.url), 'utf8');
 const portalReturn = fs.readFileSync(new URL('../src/portal-return-service.js', import.meta.url), 'utf8');
 const tracking = fs.readFileSync(new URL('../src/elections-tracking-ui.js', import.meta.url), 'utf8');
@@ -72,13 +72,15 @@ test('outros CSVs grandes também usam divisão interna automática', () => {
 
 test('release simplificada não anuncia DC-e em áreas operacionais visíveis', () => {
   assert.match(simplified, /report-dce/);
-  assert.match(simplified, /Dashboard e o Simulador/);
-  assert.match(simplified, /somente um retorno <strong>READY<\/strong> será liberado para Declaração Simplificada/);
+  assert.match(simplified, /Modalidade operacional atual/);
+  assert.match(simplified, /somente um retorno <strong>pronto<\/strong>/);
 });
 
-test('passo a passo acompanha a ordem real de produção e o estágio postal', () => {
-  assert.ok(approved.indexOf("'Gerar volumes'") < approved.indexOf("'Impressão'"));
-  assert.match(approved, /function productionProgress/);
-  assert.match(approved, /function trackingProgress/);
-  assert.match(approved, /terminal >= posted \? 11 : 10/);
+test('passo a passo visível foi consolidado nas oito etapas operacionais atuais', () => {
+  for (const label of ['Preparação', 'Portal Postal', 'Retorno do Portal', 'Configurar etiqueta', 'Auditar Data Matrix', 'Produção', 'Impressão', 'Entrega à operação']) {
+    assert.match(approved, new RegExp(label));
+  }
+  assert.doesNotMatch(approved, /\[9,\s*'Postagem'/);
+  assert.match(approved, /STATUS_LABELS/);
+  assert.match(approved, /READY_FOR_UNIFIED_LABEL:'Pronto para produção'/);
 });
