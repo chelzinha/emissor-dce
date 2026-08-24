@@ -26,9 +26,14 @@ function callDataAction(action, payload = {}) {
   return api(endpoint, { method: "POST", body: JSON.stringify({ action, payload }) });
 }
 
-async function processCleaningInSafeChunks(payload) {
+async function processCleaningInSafeChunks(payload, options = {}) {
   const rowIds = Array.isArray(payload?.rowIds) ? payload.rowIds.map(String).filter(Boolean) : [];
-  if (rowIds.length <= CLEANING_REQUEST_CHUNK) return callDataAction("cleaning.process", payload);
+  const onProgress = typeof options?.onProgress === "function" ? options.onProgress : null;
+  if (rowIds.length <= CLEANING_REQUEST_CHUNK) {
+    const result = await callDataAction("cleaning.process", payload);
+    onProgress?.({ processed: Number(result?.summary?.processed || 0), total: rowIds.length, summary: result?.summary || {} });
+    return result;
+  }
 
   const summary = { processed: 0, ready: 0, review: 0, rejected: 0 };
   let lastId = "";
@@ -43,12 +48,13 @@ async function processCleaningInSafeChunks(payload) {
     summary.ready += Number(current.ready || 0);
     summary.review += Number(current.review || 0);
     summary.rejected += Number(current.rejected || 0);
+    onProgress?.({ processed: summary.processed, total: rowIds.length, summary: { ...summary } });
   }
   return { id: lastId, summary };
 }
 
-export function dataAction(action, payload = {}) {
-  if (action === "cleaning.process") return processCleaningInSafeChunks(payload);
+export function dataAction(action, payload = {}, options = {}) {
+  if (action === "cleaning.process") return processCleaningInSafeChunks(payload, options);
   return callDataAction(action, payload);
 }
 
