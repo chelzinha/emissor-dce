@@ -4,7 +4,7 @@ export const LABEL_FORMATS = Object.freeze({
     heightMm: 150,
     marginMm: 4,
     trackingBarcode: Object.freeze({ widthMm: 80, heightMm: 11.5 }),
-    zipBarcode: Object.freeze({ widthMm: 19.7, heightMm: 13, xMm: 62 }),
+    zipBarcode: Object.freeze({ widthMm: 40, heightMm: 13, xMm: 56 }),
     postageMark: Object.freeze({ widthMm: 31, heightMm: 18 }),
     dataMatrix: Object.freeze({ widthMm: 25, heightMm: 25 }),
     routingSymbol: Object.freeze({ widthMm: 15, heightMm: 17 }),
