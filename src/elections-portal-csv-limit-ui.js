@@ -1,4 +1,4 @@
-export const PORTAL_CSV_MAX_ROWS = 1000;
+export const PORTAL_CSV_MAX_ROWS = 500;
 
 function normalizeCsvLines(content) {
   const text = String(content || '').replace(/^\uFEFF/, '');
