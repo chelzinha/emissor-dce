@@ -6,6 +6,7 @@ const ROOT = document.querySelector('#elections-app');
 const CHUNK = 200;
 const REVIEW_LIMIT = 100;
 const reviewCache = new Map();
+const activeCleaning = new Map();
 
 const setText = (node, value) => { if (node && node.textContent !== value) node.textContent = value; };
 const fmt = (value) => new Intl.NumberFormat('pt-BR').format(Number(value || 0));
@@ -55,6 +56,75 @@ function setStatus(item, status) {
   chip.classList.remove('bad');
 }
 
+function duration(seconds) {
+  const total = Math.max(0, Math.floor(Number(seconds || 0)));
+  const min = Math.floor(total / 60), sec = total % 60;
+  if (min < 60) return `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+  const hours = Math.floor(min / 60), mins = min % 60;
+  return `${hours}:${String(mins).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+}
+
+function progressRow(item) {
+  let row = item.row.parentElement?.querySelector(`tr[data-cleaning-progress="${CSS.escape(item.id)}"]`);
+  if (!row) {
+    row = document.createElement('tr');
+    row.className = 'base-cleaning-progress-row';
+    row.dataset.cleaningProgress = item.id;
+    const cell = document.createElement('td');
+    cell.colSpan = Math.max(1, item.row.cells.length);
+    cell.innerHTML = `<div class="base-cleaning-progress" role="status" aria-live="polite">
+      <div class="base-cleaning-progress-head"><div class="base-cleaning-progress-title"><span class="base-cleaning-spinner" aria-hidden="true"></span><strong>Higienização em andamento</strong></div><span class="base-cleaning-percent">0%</span></div>
+      <div class="base-cleaning-bar" aria-hidden="true"><span></span></div>
+      <div class="base-cleaning-summary"><span><strong data-progress-completed>0</strong> de <strong data-progress-total>0</strong> concluídos</span><span><strong data-progress-remaining>0</strong> restantes</span><span><strong data-progress-review>0</strong> para revisão</span></div>
+      <div class="base-cleaning-meta"><span>Tempo decorrido: <strong data-progress-elapsed>00:00</strong></span><span>Estimativa restante: <strong data-progress-eta>calculando…</strong></span><span class="base-cleaning-live">Última atualização: <strong data-progress-updated>agora</strong></span></div>
+    </div>`;
+    row.appendChild(cell);
+    item.row.insertAdjacentElement('afterend', row);
+  }
+  return row.querySelector('.base-cleaning-progress');
+}
+
+function renderCleaning(item, state) {
+  const panel = progressRow(item);
+  const now = Date.now();
+  const completed = Math.min(state.total, state.initialReady + state.initialReview + state.processed);
+  const remaining = Math.max(0, state.total - completed);
+  const percent = state.total ? Math.min(100, Math.round((completed / state.total) * 100)) : 0;
+  const elapsed = Math.max(0, (now - state.startedAt) / 1000);
+  const rate = state.processed > 0 && elapsed > 0 ? state.processed / elapsed : 0;
+  const eta = rate > 0 ? remaining / rate : 0;
+  const age = Math.max(0, Math.floor((now - state.lastUpdateAt) / 1000));
+  const readyNow = state.initialReady + state.readyDelta;
+  const reviewNow = state.initialReview + state.reviewDelta;
+
+  setText(panel.querySelector('.base-cleaning-percent'), `${percent}%`);
+  panel.querySelector('.base-cleaning-bar > span').style.width = `${percent}%`;
+  setText(panel.querySelector('[data-progress-completed]'), fmt(completed));
+  setText(panel.querySelector('[data-progress-total]'), fmt(state.total));
+  setText(panel.querySelector('[data-progress-remaining]'), fmt(remaining));
+  setText(panel.querySelector('[data-progress-review]'), fmt(reviewNow));
+  setText(panel.querySelector('[data-progress-elapsed]'), duration(elapsed));
+  setText(panel.querySelector('[data-progress-eta]'), state.processed ? `~${duration(eta)}` : 'calculando…');
+  setText(panel.querySelector('[data-progress-updated]'), age < 2 ? 'agora' : `há ${age}s`);
+  setText(item.row.querySelector('td:nth-child(4)'), fmt(readyNow));
+  setText(item.row.querySelector('td:nth-child(5)'), fmt(reviewNow));
+  setStatus(item, 'CLEANING');
+  item.button.disabled = true;
+  setText(item.button, 'Higienizando…');
+}
+
+function failCleaning(item, state, message) {
+  clearInterval(state.timer);
+  activeCleaning.delete(item.id);
+  const panel = progressRow(item);
+  panel.classList.add('error');
+  setText(panel.querySelector('.base-cleaning-progress-title strong'), 'Higienização interrompida');
+  setText(panel.querySelector('.base-cleaning-percent'), 'Atenção');
+  setText(panel.querySelector('[data-progress-updated]'), message || 'erro na última tentativa');
+  item.button.disabled = false;
+  setText(item.button, 'Tentar novamente');
+}
+
 async function hideIncomplete(item) {
   if (!item.id || item.row.dataset.abortAttempted) return;
   item.row.dataset.abortAttempted = '1';
@@ -78,8 +148,10 @@ function decorate(page) {
   baseRows(page).forEach((item) => {
     if (item.status === 'UPLOADING' && item.total === 0) { hideIncomplete(item); return; }
     item.button.hidden = false;
-    item.button.disabled = false;
     item.button.removeAttribute('data-review-base');
+    const cleaning = activeCleaning.get(item.id);
+    if (cleaning) { renderCleaning(item, cleaning); return; }
+    item.button.disabled = false;
     if (item.exported) { item.button.hidden = true; return; }
     if (item.review > 0 && item.remaining === 0) { setText(item.button, 'Revisar pendências'); item.button.dataset.reviewBase = item.id; return; }
     if (item.remaining > 0) { setText(item.button, 'Higienizar base'); return; }
@@ -123,29 +195,61 @@ async function uploadFull(page, button) {
 async function cleanFull(page, button, addressListId) {
   if (!addressListId || button.disabled) return;
   const item = baseRows(page).find((row) => row.id === addressListId);
-  const expected = item?.remaining || item?.total || 0;
-  let processed = 0;
-  button.disabled = true;
+  if (!item) return;
+  statusBox(page);
+  const state = {
+    total: item.total,
+    initialReady: item.ready,
+    initialReview: item.review,
+    processed: 0,
+    readyDelta: 0,
+    reviewDelta: 0,
+    rejectedDelta: 0,
+    startedAt: Date.now(),
+    lastUpdateAt: Date.now(),
+    timer: null,
+  };
+  activeCleaning.set(addressListId, state);
+  renderCleaning(item, state);
+  state.timer = setInterval(() => renderCleaning(item, state), 1000);
+
   try {
     while (true) {
       const raw = await dataAction('addressRows.list', { campaignId: cid(), addressListId, status: 'RAW', limit: CHUNK });
       if (!raw.length) break;
       const ids = raw.map((row) => String(row.id || '')).filter(Boolean);
       if (!ids.length) throw new Error('A higienização não conseguiu identificar o próximo grupo interno.');
-      const result = await dataAction('cleaning.process', { campaignId: cid(), addressListId, rowIds: ids });
+
+      const processedBefore = state.processed;
+      const readyBefore = state.readyDelta;
+      const reviewBefore = state.reviewDelta;
+      const rejectedBefore = state.rejectedDelta;
+      const result = await dataAction('cleaning.process', { campaignId: cid(), addressListId, rowIds: ids }, {
+        onProgress: (progress) => {
+          state.processed = processedBefore + Number(progress?.processed || 0);
+          state.readyDelta = readyBefore + Number(progress?.summary?.ready || 0);
+          state.reviewDelta = reviewBefore + Number(progress?.summary?.review || 0);
+          state.rejectedDelta = rejectedBefore + Number(progress?.summary?.rejected || 0);
+          state.lastUpdateAt = Date.now();
+          renderCleaning(item, state);
+        },
+      });
       const count = Number(result?.summary?.processed || 0);
       if (!count) throw new Error('A higienização não avançou.');
-      processed += count;
-      setText(button, `Higienizando ${fmt(Math.min(expected || processed, processed))}${expected ? ` de ${fmt(expected)}` : ''}…`);
-      statusBox(page, `Higienizando a base completa: ${fmt(processed)}${expected ? ` de ${fmt(expected)}` : ''} cadastros…`, 'busy');
+      state.processed = processedBefore + count;
+      state.readyDelta = readyBefore + Number(result?.summary?.ready || 0);
+      state.reviewDelta = reviewBefore + Number(result?.summary?.review || 0);
+      state.rejectedDelta = rejectedBefore + Number(result?.summary?.rejected || 0);
+      state.lastUpdateAt = Date.now();
+      renderCleaning(item, state);
     }
+    clearInterval(state.timer);
+    activeCleaning.delete(addressListId);
     const review = await dataAction('addressRows.list', { campaignId: cid(), addressListId, status: 'REVIEW', limit: 1 });
     notify(review.length ? 'Higienização concluída. Existem cadastros para revisão.' : 'Higienização concluída para a base completa.', review.length ? 'info' : 'success');
     location.reload();
   } catch (error) {
-    button.disabled = false;
-    setText(button, 'Higienizar base');
-    statusBox(page, error.message, 'error');
+    failCleaning(item, state, error.message);
     notify(error.message, 'error');
   }
 }
