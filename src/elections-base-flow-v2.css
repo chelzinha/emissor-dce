@@ -1,0 +1,50 @@
+.base-operation-status {
+  margin-top: 12px;
+  padding: 11px 13px;
+  border-radius: 10px;
+  border: 1px solid #dce4ed;
+  background: #f8fafc;
+  color: #536178;
+  font-size: 13px;
+}
+.base-operation-status[hidden] { display: none; }
+.base-operation-status.busy { border-color: #b8d7e8; background: #eef7fb; color: #315c74; }
+.base-operation-status.ok { border-color: #bfe2cd; background: #edf8f2; color: #286345; }
+.base-operation-status.warn { border-color: #ead69e; background: #fff8e8; color: #775d17; }
+.base-operation-status.error { border-color: #ecc7c7; background: #fdf0f0; color: #8b3030; }
+
+.base-review-panel { margin-top: 16px; }
+.base-review-panel > .section-title small { color: #758197; font-size: 12px; white-space: nowrap; }
+.base-review-list { display: grid; gap: 12px; }
+.base-review-item {
+  border: 1px solid #e1e7ef;
+  border-radius: 13px;
+  padding: 14px;
+  background: #fbfcfe;
+}
+.base-review-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 13px;
+}
+.base-review-head > div { min-width: 0; }
+.base-review-head strong { display: block; color: #172033; }
+.base-review-issues { display: block; margin-top: 4px; color: #936400; font-size: 12px; line-height: 1.45; }
+.base-review-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 11px;
+}
+.base-review-grid .wide { grid-column: span 2; }
+
+@media (max-width: 1100px) {
+  .base-review-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .base-review-grid .wide { grid-column: 1 / -1; }
+}
+@media (max-width: 720px) {
+  .base-review-head { flex-direction: column; }
+  .base-review-grid { grid-template-columns: 1fr; }
+  .base-review-grid .wide { grid-column: auto; }
+}
