@@ -6,6 +6,10 @@ export const DCE_ISSUER_TYPE_OWN = "2";
 export const DCE_TRANSPORT_CORREIOS = "0";
 export const DCE_NORMAL_ISSUE = "1";
 
+// Regra E04-20 do Anexo I: em homologacao o xNome do destinatario deve ser
+// exatamente esta literal, sob pena de rejeicao 598.
+export const HOMOLOGATION_RECIPIENT_NAME = "DCE EMITIDA EM AMBIENTE DE HOMOLOGACAO";
+
 export const UF_CODES = Object.freeze({
   AC: "12", AL: "27", AP: "16", AM: "13", BA: "29", CE: "23", DF: "53",
   ES: "32", GO: "52", MA: "21", MT: "51", MS: "50", MG: "31", PA: "15",

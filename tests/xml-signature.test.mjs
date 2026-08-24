@@ -34,3 +34,38 @@ test("gera XML e assinatura envelopada", () => {
   assert.match(signed, /<Signature xmlns="http:\/\/www\.w3\.org\/2000\/09\/xmldsig#">/);
   assert.match(signed, new RegExp(`<Reference URI="#DCe${built.accessKey}">`));
 });
+
+test('homologacao substitui o nome do destinatario pela literal da regra E04-20', () => {
+  const base = {
+    identification: { series: '900', number: '1', environment: '2', emissionDateTime: '2026-08-24T10:00:00-03:00' },
+    issuer: { cnpj: '68403698000120', name: 'CLIENTE TESTE', address: { street: 'RUA A', number: '1', district: 'CENTRO', cityCode: '2304400', city: 'FORTALEZA', uf: 'CE', zip: '60110301' } },
+    recipient: { documentType: 'CPF', document: '37522332818', name: 'ITALO ROGERIO', address: { street: 'RUA B', number: '2', district: 'CENTRO', cityCode: '2304400', city: 'FORTALEZA', uf: 'CE', zip: '60335560' } },
+    items: [{ description: 'PANFLETOS', quantity: 1, unitValue: 15 }],
+  };
+  const homolog = normalizeDceDocument(base);
+  assert.equal(homolog.valid, true);
+  assert.equal(homolog.document.recipient.name, 'DCE EMITIDA EM AMBIENTE DE HOMOLOGACAO');
+  assert.equal(homolog.document.recipient.realName, 'ITALO ROGERIO');
+
+  const producao = normalizeDceDocument({ ...base, identification: { ...base.identification, environment: '1' } });
+  assert.equal(producao.document.recipient.name, 'ITALO ROGERIO');
+});
+
+test('destinatario aceita CPF, CNPJ e idOutros como choice do grupo E', () => {
+  const address = { street: 'RUA B', number: '2', district: 'CENTRO', cityCode: '2304400', city: 'FORTALEZA', uf: 'CE', zip: '60335560' };
+  const build = (recipient) => normalizeDceDocument({
+    identification: { series: '900', number: '1', environment: '1', emissionDateTime: '2026-08-24T10:00:00-03:00' },
+    issuer: { cnpj: '68403698000120', name: 'CLIENTE TESTE', address: { street: 'RUA A', number: '1', district: 'CENTRO', cityCode: '2304400', city: 'FORTALEZA', uf: 'CE', zip: '60110301' } },
+    recipient, items: [{ description: 'PANFLETOS', quantity: 1, unitValue: 15 }],
+  });
+  assert.equal(build({ documentType: 'CPF', document: '37522332818', name: 'ITALO', address }).valid, true);
+  assert.equal(build({ documentType: 'CNPJ', document: '68403698000120', name: 'EMPRESA', address }).valid, true);
+
+  const outros = build({ documentType: 'idOutros', document: 'RG2002123456', name: 'ITALO', address });
+  assert.equal(outros.valid, true);
+  assert.equal(outros.document.recipient.documentType, 'idOutros');
+
+  // E03a-60 nao admite espaco nem menos de 2 caracteres
+  assert.equal(build({ documentType: 'idOutros', document: 'RG 2002123456', name: 'ITALO', address }).valid, false);
+  assert.equal(build({ documentType: 'idOutros', document: 'A', name: 'ITALO', address }).valid, false);
+});

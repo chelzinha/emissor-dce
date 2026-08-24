@@ -58,3 +58,21 @@ test('HTML carrega os novos módulos e não duplica o cadastro antigo de usuári
   assert.match(html, /elections-internal-delivery-ui\.js/);
   assert.doesNotMatch(html, /elections-user-admin-ui\.js/);
 });
+
+test('Acompanhamento e Relatorios ficam visiveis na secao PÓS-POSTAGEM', () => {
+  // Antes eles eram injetados como filhos diretos de .app-nav e o proprio
+  // shell os marcava como source-nav-button, que o CSS esconde. Ficavam
+  // inalcancaveis pelo menu.
+  assert.match(stages, /POST_VIEWS=\['tracking','reports'\]/);
+  assert.match(stages, /PÓS-POSTAGEM/);
+  assert.match(stages, /data-operation-post/);
+  assert.match(stages, /function relocatePostViews/);
+  // os botoes sao MOVIDOS, nunca recriados, para preservar os listeners
+  assert.match(stages, /host\.appendChild\(button\)/);
+  assert.match(stages, /if\(!POST_VIEWS\.includes\(b\.dataset\.view\)\)b\.classList\.add\('source-nav-button'\)/);
+});
+
+test('componente antigo de 11 etapas foi removido do projeto', () => {
+  assert.doesNotMatch(html, /elections-approved-ui/);
+  assert.equal(fs.existsSync(new URL('../src/elections-approved-ui.js', import.meta.url)), false);
+});

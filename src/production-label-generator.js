@@ -213,11 +213,16 @@ function routingIconDataUrl(service) {
   ctx.clearRect(0, 0, 180, 180);
   ctx.fillStyle = '#000';
 
-  if (family === 'SEDEX') {
+  // Conferido nos PNGs oficiais dos Correios: PAC e o circulo cheio e
+  // SEDEX e a onda formada por arco superior mais domo inferior.
+  // Estavam invertidos ate a correcao de 24/08/2026.
+  const isCircle = family === 'PAC';
+  const isWave = family === 'SEDEX';
+  if (isCircle) {
     ctx.beginPath();
     ctx.arc(90, 90, 62, 0, Math.PI * 2);
     ctx.fill();
-  } else {
+  } else if (isWave) {
     ctx.beginPath();
     ctx.moveTo(31, 112);
     ctx.lineTo(31, 72);

@@ -26,7 +26,11 @@ export async function parseJson(req, maxBytes = 6_000_000) {
 export async function requireUser() {
   const user = await getUser();
   if (user) return user;
-  if (env("DCE_ALLOW_DEV_AUTH", "false") === "true") {
+  // O bypass so existe fora de producao. Antes bastava a variavel de ambiente,
+  // o que deixava um admin sem senha a um deploy de distancia.
+  const isProduction = env("CONTEXT", "") === "production"
+    || env("NODE_ENV", "") === "production";
+  if (!isProduction && env("DCE_ALLOW_DEV_AUTH", "false") === "true") {
     return { id: "local-development", email: "dev@localhost", app_metadata: { roles: ["admin"] } };
   }
   return null;

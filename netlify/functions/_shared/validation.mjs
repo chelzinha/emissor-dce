@@ -3,6 +3,7 @@ import {
   DCE_MODEL,
   DCE_NORMAL_ISSUE,
   DCE_TRANSPORT_CORREIOS,
+  HOMOLOGATION_RECIPIENT_NAME,
   UF_CODES,
 } from "./constants.mjs";
 
@@ -90,8 +91,14 @@ export function normalizeDceDocument(input) {
   const errors = [];
   const source = input || {};
   const issuerCnpj = digits(source.issuer?.cnpj);
-  const recipientDocument = digits(source.recipient?.document);
-  const recipientDocumentType = source.recipient?.documentType === "CNPJ" ? "CNPJ" : "CPF";
+  // E02 CNPJ, E03 CPF e E03a idOutros sao choice: exatamente um deve existir.
+  const rawDocumentType = String(source.recipient?.documentType || "").trim();
+  const recipientDocumentType = rawDocumentType === "CNPJ" ? "CNPJ"
+    : rawDocumentType === "idOutros" ? "idOutros"
+    : "CPF";
+  const recipientDocument = recipientDocumentType === "idOutros"
+    ? cleanText(source.recipient?.document, 60).toUpperCase()
+    : digits(source.recipient?.document);
   const uf = cleanText(source.issuer?.address?.uf, 2).toUpperCase();
   const series = String(Number(source.identification?.series ?? 0));
   const number = String(Number(source.identification?.number ?? 0));
@@ -105,6 +112,13 @@ export function normalizeDceDocument(input) {
   }
   if (recipientDocumentType === "CPF" && !isValidCpf(recipientDocument)) {
     errors.push("recipient.document: CPF do destinatário inválido");
+  }
+  if (recipientDocumentType === "idOutros") {
+    // E03a-60: o schema aceita apenas o conjunto [!-y] de 2 a 60 caracteres.
+    // Espaco esta fora do conjunto, por isso "RG 123" precisa virar "RG123".
+    if (!/^[\u0021-\u00FF]{2,60}$/.test(recipientDocument)) {
+      errors.push("recipient.document: idOutros aceita de 2 a 60 caracteres, sem espaços");
+    }
   }
   if (!UF_CODES[uf]) errors.push("issuer.address.uf: UF do emitente inválida");
   if (!/^\d{1,3}$/.test(series) || Number(series) > 999) errors.push("identification.series: série inválida");
@@ -161,7 +175,11 @@ export function normalizeDceDocument(input) {
     recipient: {
       documentType: recipientDocumentType,
       document: recipientDocument,
-      name: requireText(errors, "recipient.name", source.recipient?.name, 2, 60),
+      // E04-20: em homologacao o nome real e substituido pela literal exigida.
+      name: tpAmb === "2"
+        ? HOMOLOGATION_RECIPIENT_NAME
+        : requireText(errors, "recipient.name", source.recipient?.name, 2, 60),
+      realName: cleanText(source.recipient?.name, 60),
       address: normalizeAddress(errors, "recipient.address", source.recipient?.address, true),
     },
     items,

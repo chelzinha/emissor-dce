@@ -188,7 +188,8 @@ function mount() {
     panel = document.createElement('section');
     panel.id = 'internal-delivery-panel';
     panel.className = 'card internal-delivery-panel';
-    const process = page.querySelector(':scope > .approved-process');
+    // A timeline antiga (.approved-process) foi removida; a atual e .workflow-8-process.
+    const process = page.querySelector(':scope > .workflow-8-process');
     if (process) process.insertAdjacentElement('afterend', panel);
     else page.querySelector(':scope > .page-head')?.insertAdjacentElement('afterend', panel);
   }
