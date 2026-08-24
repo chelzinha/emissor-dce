@@ -6,23 +6,278 @@ import { loadPostalVendors } from './postal-vendors.js';
 import { configureLabelSetup } from './label-setup-ui.js';
 import { isLabelSetupComplete } from './label-setup.js';
 
-const ROOT=document.querySelector('#elections-app');
-function h(v){return String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
-function campaignId(){return document.querySelector('#campaign-select')?.value||'';}
-function notify(message,type='info'){const box=document.querySelector('#elections-toast');if(!box)return;box.textContent=message;box.className=`elections-toast show ${type}`;clearTimeout(box._opsTimer);box._opsTimer=setTimeout(()=>box.className='elections-toast',4800);}
-function productionCards(){return [...(ROOT?.querySelectorAll('.page .card')||[])].filter(card=>card.querySelector('[data-volumes]')&&card.querySelector('h2'));}
-function uuid(){return globalThis.crypto?.randomUUID?.()||`${Date.now()}-${Math.random().toString(16).slice(2)}`;}
-function gateBox(label,ok,text){return `<div class="production-gate ${ok?'ok':'warn'}"><span>${h(label)}</span><strong>${h(text)}</strong></div>`;}
-function gateMarkup(g,setupReady){return `<div class="production-ops-title"><strong>Gates de produção</strong><span class="status ${g.handedOff?'ok':g.printComplete?'warn':''}">${g.handedOff?'ENTREGUE À OPERAÇÃO':g.printComplete?'IMPRESSÃO COMPLETA':'EM PREPARAÇÃO'}</span></div><div class="production-ops-grid">${gateBox('Modelo da etiqueta',setupReady,setupReady?'Data Matrix + chancela configurados':'Configuração pendente')}${gateBox('Data Matrix 100%',g.matrixVerified,g.matrixVerified?'Confirmado':'Pendente')}${gateBox('Etiqueta teste',g.labelTestApproved,g.labelTestApproved?'SRO validado':`Pendente · ${g.testTrackingCode||'—'}`)}${gateBox('Impressão',g.printComplete,g.printComplete?`${g.printed}/${g.total}`:`${g.printed}/${g.total} · faltam ${g.printRemaining}`)}${gateBox('Entrega interna',g.handedOff,g.handedOff?`Recebido por ${g.receivedBy||'confirmado'}`:'Pendente')}</div><div class="production-ops-actions">${!setupReady?'<button type="button" class="secondary" data-op="setup">Configurar Data Matrix e chancela</button>':!g.matrixVerified?'<button type="button" class="secondary" data-op="matrix">Conferir 100% Data Matrix</button>':''}${setupReady&&g.matrixVerified&&!g.labelTestApproved?'<button type="button" class="secondary" data-op="test">Validar etiqueta teste</button>':''}${g.labelTestApproved&&!g.printComplete?'<button type="button" class="secondary" data-op="print">Confirmar impressão</button>':''}${g.printComplete&&!g.handedOff?'<button type="button" class="secondary" data-op="handoff">Confirmar entrega interna</button>':''}${g.handedOff?'<button type="button" class="ghost" data-op="protocol">Validar protocolo de postagem</button>':''}</div><div class="production-ops-message"></div>`;}
-async function batchInfo(batchId){const rows=await dataAction('production.list',{campaignId:campaignId()});return rows.find(row=>String(row.ID||row.id)===String(batchId))||null;}
-function portalReturnIdFromBatch(batch){return String(batch?.PORTAL_RETURN_ID||batch?.portalReturnId||'');}
-async function loadGates(card,batchId){const slot=card.querySelector('.production-ops-gates');try{const [g,batch]=await Promise.all([dataAction('production.gates',{campaignId:campaignId(),productionBatchId:batchId}),batchInfo(batchId)]);if(!batch)throw new Error('Lote de produção não localizado.');const portalReturnId=portalReturnIdFromBatch(batch);const assets=portalReturnId?await getPortalReturnAssets(portalReturnId):null;const setupReady=isLabelSetupComplete(assets?.labelSetup);slot.innerHTML=gateMarkup(g,setupReady);slot.querySelectorAll('[data-op]').forEach(b=>b.onclick=()=>runAction(card,batchId,b.dataset.op,g));}catch(error){slot.innerHTML=`<div class="production-ops-error">${h(error.message)}</div>`;}}
-async function configureBatchLabel(batchId){const batch=await batchInfo(batchId);if(!batch)throw new Error('Lote de produção não localizado.');const portalReturnId=portalReturnIdFromBatch(batch);if(!portalReturnId)throw new Error('O lote não possui retorno do Portal associado.');const assets=await getPortalReturnAssets(portalReturnId);if(!assets?.pdfFiles?.length)throw new Error('Os PDFs originais deste retorno não estão disponíveis neste navegador. Reimporte o retorno do Portal neste computador para configurar a etiqueta.');const configured=await configureLabelSetup({pdfFiles:assets.pdfFiles,initialSetup:assets.labelSetup});if(!configured)return false;await updatePortalReturnLabelSetup(portalReturnId,configured);notify('Área do Data Matrix e chancela salvas para este retorno.','success');return true;}
-async function verifyMatrix(card,batchId){const message=card.querySelector('.production-ops-message');message.className='production-ops-message production-ops-progress';message.textContent='Recuperando PDFs originais do Portal e verificando os Data Matrix...';const batch=await batchInfo(batchId);if(!batch)throw new Error('Lote de produção não localizado.');const portalReturnId=portalReturnIdFromBatch(batch);if(!portalReturnId)throw new Error('O lote não possui retorno do Portal associado.');const assets=await getPortalReturnAssets(portalReturnId);if(!assets?.pdfFiles?.length)throw new Error('Os PDFs originais deste retorno não estão disponíveis no cache local deste navegador. Reimporte o retorno do Portal neste computador antes de produzir.');if(!isLabelSetupComplete(assets.labelSetup))throw new Error('Configure primeiro a área do Data Matrix e a chancela da etiqueta.');const {pdfjsLib,ZXing}=await loadPostalVendors();const documents=await loadPdfDocuments(assets.pdfFiles,pdfjsLib);const audit=await auditPdfDocuments(documents,ZXing,{region:assets.labelSetup.matrixRegion,onProgress:p=>{message.textContent=`Verificando Data Matrix: ${p.processed||0} de ${p.totalPages||0} páginas...`;}});const verified=await verifyCrops(audit.crops,ZXing);const ok=verified.filter(row=>row.ok).map(row=>row.object);if(ok.length!==verified.length)throw new Error(`${verified.length-ok.length} Data Matrix não puderam ser confirmados na releitura local.`);await dataAction('production.matrix.confirm',{campaignId:campaignId(),productionBatchId:batchId,verifiedTrackingCodes:ok});notify('100% dos Data Matrix foram confirmados para o lote.','success');}
-async function approveTest(batchId){const data=await dataAction('production.labelTest.data',{campaignId:campaignId(),productionBatchId:batchId});const read=window.prompt(`Etiqueta teste do lote\nSRO esperado: ${data.trackingCode}\n\nDigite ou leia com o scanner o SRO impresso fisicamente:`,'');if(read==null)return;await dataAction('production.labelTest.approve',{campaignId:campaignId(),productionBatchId:batchId,readTrackingCode:read});notify('Etiqueta teste aprovada pelo SRO lido fisicamente.','success');}
-async function confirmPrint(batchId,gates){const raw=window.prompt(`Quantas etiquetas foram impressas nesta baixa?\nSaldo atual: ${gates.printRemaining}`,String(gates.printRemaining||''));if(raw==null)return;const quantity=Number(String(raw).replace(/\D/g,''));if(!quantity)return;await dataAction('production.print.confirm',{campaignId:campaignId(),productionBatchId:batchId,quantity,confirmationId:uuid()});notify(`${quantity.toLocaleString('pt-BR')} etiquetas registradas como impressas.`,'success');}
-async function confirmHandoff(batchId){const receivedBy=window.prompt('Nome de quem recebeu fisicamente os volumes de etiquetas:','');if(receivedBy==null)return;const deliveredBy=window.prompt('Responsável pela entrega (opcional):','')||'';await dataAction('production.handoff.confirm',{campaignId:campaignId(),productionBatchId:batchId,receivedBy,deliveredBy});notify('Entrega interna dos volumes confirmada.','success');}
-async function validateProtocol(card,batchId){const message=card.querySelector('.production-ops-message');const data=await dataAction('production.protocol.data',{campaignId:campaignId(),productionBatchId:batchId});if(!data.ready){message.className='production-ops-message production-ops-error';message.innerHTML=`O protocolo ainda não pode ser gerado: ${data.errors.slice(0,8).map(h).join('<br>')}${data.errors.length>8?`<br>+ ${data.errors.length-8} pendências`:''}`;return;}message.className='production-ops-message production-ops-progress';message.textContent=`Dados validados: ${data.total.toLocaleString('pt-BR')} objetos em ${data.lists.length} lista(s) postal(is) real(is).`;notify('Dados do protocolo de postagem validados no backend.','success');}
-async function runAction(card,batchId,action,gates){const buttons=[...card.querySelectorAll('.production-ops-actions button')];buttons.forEach(b=>b.disabled=true);try{if(action==='setup')await configureBatchLabel(batchId);if(action==='matrix')await verifyMatrix(card,batchId);if(action==='test')await approveTest(batchId);if(action==='print')await confirmPrint(batchId,gates);if(action==='handoff')await confirmHandoff(batchId);if(action==='protocol')await validateProtocol(card,batchId);if(action!=='protocol')await loadGates(card,batchId);}catch(error){const message=card.querySelector('.production-ops-message');if(message){message.className='production-ops-message production-ops-error';message.textContent=error.message;}notify(error.message,'error');}finally{buttons.forEach(b=>b.disabled=false);}}
-function mount(){productionCards().forEach(card=>{const volumeButton=card.querySelector('[data-volumes]'),batchId=volumeButton?.dataset.volumes;if(!batchId||card.querySelector('.production-ops-gates'))return;const slot=document.createElement('div');slot.className='production-ops-gates';slot.innerHTML='<div class="production-ops-progress">Carregando gates operacionais...</div>';card.appendChild(slot);loadGates(card,batchId);});}
-const observer=new MutationObserver(()=>queueMicrotask(mount));if(ROOT)observer.observe(ROOT,{childList:true,subtree:true});mount();
+const ROOT = document.querySelector('#elections-app');
+
+function h(value) {
+  return String(value ?? '').replace(/[&<>'"]/g, (char) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+  }[char]));
+}
+
+function campaignId() {
+  return document.querySelector('#campaign-select')?.value || '';
+}
+
+function notify(message, type = 'info') {
+  const box = document.querySelector('#elections-toast');
+  if (!box) return;
+  box.textContent = message;
+  box.className = `elections-toast show ${type}`;
+  clearTimeout(box._opsTimer);
+  box._opsTimer = setTimeout(() => { box.className = 'elections-toast'; }, 4800);
+}
+
+function productionCards() {
+  return [...(ROOT?.querySelectorAll('.page .card') || [])]
+    .filter((card) => card.querySelector('[data-volumes]') && card.querySelector('h2'));
+}
+
+function uuid() {
+  return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function gateBox(label, ok, text) {
+  return `<div class="production-gate ${ok ? 'ok' : 'warn'}"><span>${h(label)}</span><strong>${h(text)}</strong></div>`;
+}
+
+function gateMarkup(gates, setupReady) {
+  return `<div class="production-ops-title"><strong>Gates de produção</strong><span class="status ${gates.handedOff ? 'ok' : gates.printComplete ? 'warn' : ''}">${gates.handedOff ? 'ENTREGUE À OPERAÇÃO' : gates.printComplete ? 'IMPRESSÃO COMPLETA' : 'EM PREPARAÇÃO'}</span></div>
+    <div class="production-ops-grid">
+      ${gateBox('Modelo da etiqueta', setupReady, setupReady ? 'Data Matrix + chancela configurados' : 'Configuração pendente')}
+      ${gateBox('Data Matrix 100%', gates.matrixVerified, gates.matrixVerified ? 'Confirmado' : 'Pendente')}
+      ${gateBox('Etiqueta teste', gates.labelTestApproved, gates.labelTestApproved ? 'SRO validado' : `Pendente · ${gates.testTrackingCode || '—'}`)}
+      ${gateBox('Impressão', gates.printComplete, gates.printComplete ? `${gates.printed}/${gates.total}` : `${gates.printed}/${gates.total} · faltam ${gates.printRemaining}`)}
+      ${gateBox('Entrega interna', gates.handedOff, gates.handedOff ? `Recebido por ${gates.receivedBy || 'confirmado'}` : 'Pendente')}
+    </div>
+    <div class="production-ops-actions">
+      ${!setupReady ? '<button type="button" class="secondary" data-op="setup">Configurar Data Matrix e chancela</button>' : !gates.matrixVerified ? '<button type="button" class="secondary" data-op="matrix">Conferir 100% Data Matrix</button>' : ''}
+      ${setupReady && gates.matrixVerified && !gates.labelTestApproved ? '<button type="button" class="secondary" data-op="test">Validar etiqueta teste</button>' : ''}
+      ${gates.labelTestApproved && !gates.printComplete ? '<button type="button" class="secondary" data-op="print">Confirmar impressão</button>' : ''}
+      ${gates.printComplete && !gates.handedOff ? '<button type="button" class="secondary" data-op="handoff">Confirmar entrega interna</button>' : ''}
+      ${gates.handedOff ? '<button type="button" class="ghost" data-op="protocol">Validar protocolo de postagem</button>' : ''}
+    </div>
+    <div class="production-ops-message"></div>`;
+}
+
+async function batchInfo(batchId) {
+  const rows = await dataAction('production.list', { campaignId: campaignId() });
+  return rows.find((row) => String(row.ID || row.id) === String(batchId)) || null;
+}
+
+function portalReturnIdFromBatch(batch) {
+  return String(batch?.PORTAL_RETURN_ID || batch?.portalReturnId || '');
+}
+
+function documentModeFromBatch(batch) {
+  return String(batch?.DOCUMENT_MODE || batch?.documentMode || '');
+}
+
+function isAssociationMismatch(error) {
+  const message = String(error?.message || error || '');
+  return /Quantidade de objetos do lote diverge do total registrado|Nenhum objeto associado ao lote de producao/i.test(message);
+}
+
+async function gatesWithRecovery(batchId, batch) {
+  try {
+    return await dataAction('production.gates', {
+      campaignId: campaignId(),
+      productionBatchId: batchId,
+    });
+  } catch (error) {
+    if (!isAssociationMismatch(error)) throw error;
+    const portalReturnId = portalReturnIdFromBatch(batch);
+    const documentMode = documentModeFromBatch(batch);
+    if (!portalReturnId || !documentMode) throw error;
+
+    await dataAction('production.prepare', {
+      campaignId: campaignId(),
+      portalReturnId,
+      documentMode,
+    });
+
+    return dataAction('production.gates', {
+      campaignId: campaignId(),
+      productionBatchId: batchId,
+    });
+  }
+}
+
+async function loadGates(card, batchId) {
+  const slot = card.querySelector('.production-ops-gates');
+  try {
+    const batch = await batchInfo(batchId);
+    if (!batch) throw new Error('Lote de produção não localizado.');
+    const gates = await gatesWithRecovery(batchId, batch);
+    const portalReturnId = portalReturnIdFromBatch(batch);
+    const assets = portalReturnId ? await getPortalReturnAssets(portalReturnId) : null;
+    const setupReady = isLabelSetupComplete(assets?.labelSetup);
+    slot.innerHTML = gateMarkup(gates, setupReady);
+    slot.querySelectorAll('[data-op]').forEach((button) => {
+      button.onclick = () => runAction(card, batchId, button.dataset.op, gates);
+    });
+  } catch (error) {
+    slot.innerHTML = `<div class="production-ops-error">${h(error.message)}</div>`;
+  }
+}
+
+async function configureBatchLabel(batchId) {
+  const batch = await batchInfo(batchId);
+  if (!batch) throw new Error('Lote de produção não localizado.');
+  const portalReturnId = portalReturnIdFromBatch(batch);
+  if (!portalReturnId) throw new Error('O lote não possui retorno do Portal associado.');
+  const assets = await getPortalReturnAssets(portalReturnId);
+  if (!assets?.pdfFiles?.length) {
+    throw new Error('Os PDFs originais deste retorno não estão disponíveis neste navegador. Reimporte o retorno do Portal neste computador para configurar a etiqueta.');
+  }
+  const configured = await configureLabelSetup({
+    pdfFiles: assets.pdfFiles,
+    initialSetup: assets.labelSetup,
+  });
+  if (!configured) return false;
+  await updatePortalReturnLabelSetup(portalReturnId, configured);
+  notify('Área do Data Matrix e chancela salvas para este retorno.', 'success');
+  return true;
+}
+
+async function verifyMatrix(card, batchId) {
+  const message = card.querySelector('.production-ops-message');
+  message.className = 'production-ops-message production-ops-progress';
+  message.textContent = 'Recuperando PDFs originais do Portal e verificando os Data Matrix...';
+
+  const batch = await batchInfo(batchId);
+  if (!batch) throw new Error('Lote de produção não localizado.');
+  const portalReturnId = portalReturnIdFromBatch(batch);
+  if (!portalReturnId) throw new Error('O lote não possui retorno do Portal associado.');
+  const assets = await getPortalReturnAssets(portalReturnId);
+  if (!assets?.pdfFiles?.length) {
+    throw new Error('Os PDFs originais deste retorno não estão disponíveis no cache local deste navegador. Reimporte o retorno do Portal neste computador antes de produzir.');
+  }
+  if (!isLabelSetupComplete(assets.labelSetup)) {
+    throw new Error('Configure primeiro a área do Data Matrix e a chancela da etiqueta.');
+  }
+
+  const { pdfjsLib, ZXing } = await loadPostalVendors();
+  const documents = await loadPdfDocuments(assets.pdfFiles, pdfjsLib);
+  const audit = await auditPdfDocuments(documents, ZXing, {
+    region: assets.labelSetup.matrixRegion,
+    onProgress: (progress) => {
+      message.textContent = `Verificando Data Matrix: ${progress.processed || 0} de ${progress.totalPages || 0} páginas...`;
+    },
+  });
+  const verified = await verifyCrops(audit.crops, ZXing);
+  const ok = verified.filter((row) => row.ok).map((row) => row.object);
+  if (ok.length !== verified.length) {
+    throw new Error(`${verified.length - ok.length} Data Matrix não puderam ser confirmados na releitura local.`);
+  }
+
+  await dataAction('production.matrix.confirm', {
+    campaignId: campaignId(),
+    productionBatchId: batchId,
+    verifiedTrackingCodes: ok,
+  });
+  notify('100% dos Data Matrix foram confirmados para o lote.', 'success');
+}
+
+async function approveTest(batchId) {
+  const data = await dataAction('production.labelTest.data', {
+    campaignId: campaignId(),
+    productionBatchId: batchId,
+  });
+  const read = window.prompt(
+    `Etiqueta teste do lote\nSRO esperado: ${data.trackingCode}\n\nDigite ou leia com o scanner o SRO impresso fisicamente:`,
+    ''
+  );
+  if (read == null) return;
+  await dataAction('production.labelTest.approve', {
+    campaignId: campaignId(),
+    productionBatchId: batchId,
+    readTrackingCode: read,
+  });
+  notify('Etiqueta teste aprovada pelo SRO lido fisicamente.', 'success');
+}
+
+async function confirmPrint(batchId, gates) {
+  const raw = window.prompt(
+    `Quantas etiquetas foram impressas nesta baixa?\nSaldo atual: ${gates.printRemaining}`,
+    String(gates.printRemaining || '')
+  );
+  if (raw == null) return;
+  const quantity = Number(String(raw).replace(/\D/g, ''));
+  if (!quantity) return;
+  await dataAction('production.print.confirm', {
+    campaignId: campaignId(),
+    productionBatchId: batchId,
+    quantity,
+    confirmationId: uuid(),
+  });
+  notify(`${quantity.toLocaleString('pt-BR')} etiquetas registradas como impressas.`, 'success');
+}
+
+async function confirmHandoff(batchId) {
+  const receivedBy = window.prompt('Nome de quem recebeu fisicamente os volumes de etiquetas:', '');
+  if (receivedBy == null) return;
+  const deliveredBy = window.prompt('Responsável pela entrega (opcional):', '') || '';
+  await dataAction('production.handoff.confirm', {
+    campaignId: campaignId(),
+    productionBatchId: batchId,
+    receivedBy,
+    deliveredBy,
+  });
+  notify('Entrega interna dos volumes confirmada.', 'success');
+}
+
+async function validateProtocol(card, batchId) {
+  const message = card.querySelector('.production-ops-message');
+  const data = await dataAction('production.protocol.data', {
+    campaignId: campaignId(),
+    productionBatchId: batchId,
+  });
+  if (!data.ready) {
+    message.className = 'production-ops-message production-ops-error';
+    message.innerHTML = `O protocolo ainda não pode ser gerado: ${data.errors.slice(0, 8).map(h).join('<br>')}${data.errors.length > 8 ? `<br>+ ${data.errors.length - 8} pendências` : ''}`;
+    return;
+  }
+  message.className = 'production-ops-message production-ops-progress';
+  message.textContent = `Dados validados: ${data.total.toLocaleString('pt-BR')} objetos em ${data.lists.length} lista(s) postal(is) real(is).`;
+  notify('Dados do protocolo de postagem validados no backend.', 'success');
+}
+
+async function runAction(card, batchId, action, gates) {
+  const buttons = [...card.querySelectorAll('.production-ops-actions button')];
+  buttons.forEach((button) => { button.disabled = true; });
+  try {
+    if (action === 'setup') await configureBatchLabel(batchId);
+    if (action === 'matrix') await verifyMatrix(card, batchId);
+    if (action === 'test') await approveTest(batchId);
+    if (action === 'print') await confirmPrint(batchId, gates);
+    if (action === 'handoff') await confirmHandoff(batchId);
+    if (action === 'protocol') await validateProtocol(card, batchId);
+    if (action !== 'protocol') await loadGates(card, batchId);
+  } catch (error) {
+    const message = card.querySelector('.production-ops-message');
+    if (message) {
+      message.className = 'production-ops-message production-ops-error';
+      message.textContent = error.message;
+    }
+    notify(error.message, 'error');
+  } finally {
+    buttons.forEach((button) => { button.disabled = false; });
+  }
+}
+
+function mount() {
+  productionCards().forEach((card) => {
+    const volumeButton = card.querySelector('[data-volumes]');
+    const batchId = volumeButton?.dataset.volumes;
+    if (!batchId || card.querySelector('.production-ops-gates')) return;
+    const slot = document.createElement('div');
+    slot.className = 'production-ops-gates';
+    slot.innerHTML = '<div class="production-ops-progress">Carregando gates operacionais...</div>';
+    card.appendChild(slot);
+    loadGates(card, batchId);
+  });
+}
+
+const observer = new MutationObserver(() => queueMicrotask(mount));
+if (ROOT) observer.observe(ROOT, { childList: true, subtree: true });
+mount();
