@@ -18,6 +18,7 @@ function jsonOutput_(value) {
 }
 
 function safeJsonParse_(value, fallback) {
+  if (value && typeof value === 'object') return value;
   try {
     return JSON.parse(String(value || ''));
   } catch (error) {
