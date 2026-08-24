@@ -19,12 +19,15 @@ export function normalizeMatrixRegion(region) {
   return { x, y, w, h };
 }
 
-export function normalizeLabelSetup(value = {}) {
+export function normalizeLabelSetup(value) {
+  // O default de parametro so cobre undefined. currentLabelSetup nasce null,
+  // e o acesso a value.matrixRegion quebrava a renderizacao inteira da etapa 3.
+  const source = value || {};
   return {
-    matrixRegion: normalizeMatrixRegion(value.matrixRegion),
-    postageMarkDataUrl: String(value.postageMarkDataUrl || ""),
-    postageMarkName: String(value.postageMarkName || ""),
-    configuredAt: String(value.configuredAt || ""),
+    matrixRegion: normalizeMatrixRegion(source.matrixRegion),
+    postageMarkDataUrl: String(source.postageMarkDataUrl || ""),
+    postageMarkName: String(source.postageMarkName || ""),
+    configuredAt: String(source.configuredAt || ""),
   };
 }
 
@@ -33,7 +36,7 @@ export function isLabelSetupComplete(value) {
   return Boolean(setup.matrixRegion && /^data:image\/(png|jpeg);base64,/i.test(setup.postageMarkDataUrl));
 }
 
-export function completeLabelSetup(value = {}) {
+export function completeLabelSetup(value) {
   const setup = normalizeLabelSetup(value);
   if (!isLabelSetupComplete(setup)) throw new Error("Marque a área do Data Matrix e carregue a chancela antes de continuar.");
   return { ...setup, configuredAt: setup.configuredAt || new Date().toISOString() };

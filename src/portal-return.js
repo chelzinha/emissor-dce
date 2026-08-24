@@ -143,7 +143,8 @@ export function matrixStatusFor(trackingCode, auditEntry) {
   return "MANUAL_REVIEW";
 }
 
-export function mergePortalRowsWithMatrix(rows, audit = []) {
+export function mergePortalRowsWithMatrix(rows, auditInput) {
+  const audit = Array.isArray(auditInput) ? auditInput : [];
   const byObject = new Map();
   for (const entry of audit) {
     const key = auditKey(entry);

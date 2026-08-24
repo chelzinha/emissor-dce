@@ -1,4 +1,5 @@
-export function clientTrackingSegments(bucket = {}) {
+export function clientTrackingSegments(bucketInput) {
+  const bucket = bucketInput || {};
   const delivered = Math.max(0, Number(bucket.delivered || 0));
   const movement = Math.max(0, Number(bucket.inTransit || 0) + Number(bucket.outForDelivery || 0));
   const attention = Math.max(0, Number(bucket.exception || 0) + Number(bucket.returning || 0) + Number(bucket.returned || 0) + Number(bucket.unknown || 0));

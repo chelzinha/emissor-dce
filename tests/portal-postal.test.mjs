@@ -43,3 +43,9 @@ test("gera CSV com ponto e virgula e 28 posicoes por registro", () => {
   assert.match(lines[0], /^NOME;EMPRESA;CPF;CEP;/);
   assert.match(lines[1], /"PANFLETOS; ADESIVOS"/);
 });
+
+test('normalizePortalRow nao quebra quando recebe null', () => {
+  const row = normalizePortalRow(null, null);
+  assert.equal(typeof row, 'object');
+  assert.equal(row.name, '');
+});

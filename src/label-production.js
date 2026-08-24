@@ -168,14 +168,15 @@ export function productionSummary(rows, documentMode) {
   return summary;
 }
 
-export function buildUnifiedLabelModel(row, options = {}) {
-  const format = LABEL_FORMATS[options.format || "10x15"];
+export function buildUnifiedLabelModel(row, options) {
+  const opts = options || {};
+  const format = LABEL_FORMATS[opts.format || "10x15"];
   if (!format) throw new Error("Formato de etiqueta invalido");
-  const documentMode = options.documentMode;
+  const documentMode = opts.documentMode;
   const declaration = declarationDescriptor(documentMode, row);
   const presentation = servicePresentation(row.service, row.matrix?.stripe || row.stripe);
   return {
-    format: options.format || "10x15",
+    format: opts.format || "10x15",
     dimensions: { widthMm: format.widthMm, heightMm: format.heightMm },
     service: presentation,
     trackingCode: String(row.trackingCode || "").toUpperCase(),
@@ -194,12 +195,12 @@ export function buildUnifiedLabelModel(row, options = {}) {
       zip: formatZip(row.recipient?.address?.zip),
     },
     sender: {
-      name: String(options.sender?.name || "").trim(),
-      document: formatDocument(options.sender?.document),
-      addressLine: String(options.sender?.addressLine || "").trim(),
-      cityLine: String(options.sender?.cityLine || "").trim(),
+      name: String(opts.sender?.name || "").trim(),
+      document: formatDocument(opts.sender?.document),
+      addressLine: String(opts.sender?.addressLine || "").trim(),
+      cityLine: String(opts.sender?.cityLine || "").trim(),
     },
-    content: String(row.content || options.defaultContent || "").trim(),
+    content: String(row.content || opts.defaultContent || "").trim(),
     declaration,
     postalReference: String(row.reference || "").trim(),
     formatSpec: format,

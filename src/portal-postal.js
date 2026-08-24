@@ -13,7 +13,9 @@ export function cleanText(value) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
 }
 
-export function normalizePortalRow(source = {}, defaults = {}) {
+export function normalizePortalRow(sourceInput, defaultsInput) {
+  const source = sourceInput || {};
+  const defaults = defaultsInput || {};
   const read = (...keys) => {
     for (const key of keys) if (source[key] != null && String(source[key]).trim() !== "") return source[key];
     return "";
