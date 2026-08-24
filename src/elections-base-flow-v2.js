@@ -1,15 +1,17 @@
+import './elections-base-flow-v2.css';
+import Papa from 'papaparse';
 import { dataAction, textDownload } from './api.js';
 
 const ROOT = document.querySelector('#elections-app');
+const CHUNK = 200;
+const REVIEW_LIMIT = 100;
+const reviewCache = new Map();
 
-function h(value) {
-  return String(value ?? '').replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
-}
-
-function numberFromText(value) {
-  const digits = String(value || '').replace(/\D/g, '');
-  return Number(digits || 0);
-}
+const setText = (node, value) => { if (node && node.textContent !== value) node.textContent = value; };
+const fmt = (value) => new Intl.NumberFormat('pt-BR').format(Number(value || 0));
+const num = (value) => Number(String(value || '').replace(/\D/g, '') || 0);
+const cid = () => document.querySelector('#campaign-select')?.value || '';
+const h = (value) => String(value ?? '').replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
 
 function notify(message, type = 'info') {
   const box = document.querySelector('#elections-toast');
@@ -20,126 +22,239 @@ function notify(message, type = 'info') {
   box._baseFlowTimer = setTimeout(() => { box.className = 'elections-toast'; }, 4800);
 }
 
-function hideEarlyPostingFields(page) {
-  const service = page.querySelector('#base-service');
-  const content = page.querySelector('#base-content');
-  if (service) {
-    service.value = 'PAC';
-    const field = service.closest('label');
-    if (field) field.hidden = true;
+function statusBox(page, message = '', type = '') {
+  let box = page.querySelector('#base-operation-status');
+  if (!box) {
+    const upload = page.querySelector('#base-file')?.closest('.upload-box');
+    if (!upload) return;
+    box = document.createElement('div');
+    box.id = 'base-operation-status';
+    upload.insertAdjacentElement('afterend', box);
   }
-  if (content) {
-    content.value = 'PENDENTE_DEFINICAO_POSTAGEM';
-    const field = content.closest('label');
-    if (field) field.hidden = true;
-  }
-
-  const receiveCard = page.querySelector('#base-file')?.closest('.card');
-  const subtitle = receiveCard?.querySelector('.section-title p');
-  if (subtitle) {
-    subtitle.innerHTML = '<strong>CSV:</strong> NOME; CEP; ENDEREÇO; NUMERO; COMPLEMENTO; BAIRRO; CIDADE; UF. Colunas extras são preservadas.';
-  }
+  box.className = `base-operation-status ${type}`.trim();
+  setText(box, message);
+  box.hidden = !message;
 }
 
 function baseRows(page) {
-  return [...page.querySelectorAll('tbody tr')]
-    .filter((row) => row.querySelector('[data-clean]'))
-    .map((row) => {
-      const cells = row.querySelectorAll('td');
-      return {
-        id: row.querySelector('[data-clean]')?.dataset.clean || '',
-        fileName: cells[0]?.textContent?.trim() || 'Base sem nome',
-        total: numberFromText(cells[2]?.textContent),
-        ready: numberFromText(cells[3]?.textContent),
-        review: numberFromText(cells[4]?.textContent),
-      };
-    });
-}
-
-function hideLegacyExportButtons(page) {
-  page.querySelectorAll('[data-export]').forEach((button) => {
-    button.hidden = true;
-    button.tabIndex = -1;
-    button.setAttribute('aria-hidden', 'true');
+  return [...page.querySelectorAll('tbody tr')].filter((row) => row.querySelector('[data-clean]')).map((row) => {
+    const cells = row.querySelectorAll('td');
+    const button = row.querySelector('[data-clean]');
+    const total = num(cells[2]?.textContent), ready = num(cells[3]?.textContent), review = num(cells[4]?.textContent);
+    const status = cells[1]?.textContent?.trim().toUpperCase() || '';
+    return { row, button, id: button?.dataset.clean || '', fileName: cells[0]?.textContent?.trim() || 'Base sem nome', status, total, ready, review, remaining: Math.max(0, total - ready - review), exported: row.dataset.baseExported === '1' || status === 'EXPORTED' };
   });
 }
 
-function exportCardMarkup(rows) {
-  const eligible = rows.filter((row) => row.total > 0 && row.ready === row.total && row.review === 0);
-  const options = eligible.map((row) => `<option value="${h(row.id)}">${h(row.fileName)} · ${row.ready.toLocaleString('pt-BR')} cadastros</option>`).join('');
-  return `<section class="card" id="base-export-card" data-export-panel style="margin-top:16px">
-    <div class="section-title"><div><h2>Definir dados da postagem</h2><p>Esta etapa vem depois da higienização. Defina o serviço e o conteúdo que serão aplicados ao CSV do Portal Postal.</p></div></div>
-    ${eligible.length ? `<div class="form-grid">
-      <label class="field"><span>Base higienizada</span><select id="portal-export-list">${options}</select></label>
-      <label class="field"><span>Serviço</span><select id="portal-export-service"><option value="PAC">PAC</option><option value="SEDEX">SEDEX</option></select></label>
-      <label class="field wide"><span>Conteúdo</span><input id="portal-export-content" value="PANFLETOS E ADESIVOS DA CAMPANHA"></label>
-      <div class="wide"><button id="portal-export-run" class="primary" type="button">Gerar CSV para o Portal Postal</button></div>
-    </div>` : '<div class="notice">Conclua a higienização da base, sem pendências, para liberar os dados de postagem e a exportação.</div>'}
-  </section>`;
+function setStatus(item, status) {
+  const chip = item.row.querySelector('td:nth-child(2) .status');
+  if (!chip) return;
+  setText(chip, status);
+  chip.classList.toggle('ok', ['READY', 'EXPORTED'].includes(status));
+  chip.classList.toggle('warn', ['RECEIVED', 'CLEANING', 'REVIEW', 'UPLOADING'].includes(status));
+  chip.classList.remove('bad');
 }
 
-function mountExportCard(page) {
-  if (page.querySelector('#base-export-card')) return;
-  const rows = baseRows(page);
-  if (!rows.length) return;
-  const cards = [...page.querySelectorAll(':scope > .card')];
-  const basesCard = cards.find((card) => card.querySelector('[data-clean]'));
-  if (!basesCard) return;
-  basesCard.insertAdjacentHTML('afterend', exportCardMarkup(rows));
-  page.querySelector('#portal-export-run')?.addEventListener('click', runExport);
+async function hideIncomplete(item) {
+  if (!item.id || item.row.dataset.abortAttempted) return;
+  item.row.dataset.abortAttempted = '1';
+  item.row.hidden = true;
+  try { await dataAction('addressList.abort', { campaignId: cid(), addressListId: item.id }); } catch {}
 }
 
-async function runExport() {
-  const campaignId = document.querySelector('#campaign-select')?.value || '';
-  const addressListId = document.querySelector('#portal-export-list')?.value || '';
-  const service = document.querySelector('#portal-export-service')?.value || '';
-  const content = document.querySelector('#portal-export-content')?.value?.trim() || '';
-  if (!campaignId || !addressListId) return notify('Selecione uma operação e uma base higienizada.', 'error');
-  if (!content) return notify('Informe o conteúdo antes de gerar o CSV.', 'error');
-  const button = document.querySelector('#portal-export-run');
-  if (button) { button.disabled = true; button.textContent = 'Gerando CSV…'; }
+function decorate(page) {
+  [page.querySelector('#base-service'), page.querySelector('#base-content')].forEach((input) => {
+    const field = input?.closest('label');
+    if (field) field.hidden = true;
+  });
+  const head = page.querySelector(':scope > .page-head p:not(.eyebrow)');
+  setText(head, 'Envie a base completa. O sistema preserva o arquivo original e faz a higienização em processamento interno automático antes da exportação ao Portal Postal.');
+  const uploadButton = page.querySelector('#upload-base');
+  if (uploadButton && !uploadButton.disabled) setText(uploadButton, 'Importar base completa');
+  const basesCard = [...page.querySelectorAll(':scope > .card')].find((card) => card.querySelector('h2')?.textContent?.trim() === 'Bases recebidas');
+  setText(basesCard?.querySelector('.section-title p'), 'A higienização é executada sobre a base completa. Divisões técnicas acontecem automaticamente, sem exigir arquivos menores.');
+  page.querySelectorAll('[data-export]').forEach((button) => { button.hidden = true; button.tabIndex = -1; button.setAttribute('aria-hidden', 'true'); });
+
+  baseRows(page).forEach((item) => {
+    if (item.status === 'UPLOADING' && item.total === 0) { hideIncomplete(item); return; }
+    item.button.hidden = false;
+    item.button.disabled = false;
+    item.button.removeAttribute('data-review-base');
+    if (item.exported) { item.button.hidden = true; return; }
+    if (item.review > 0 && item.remaining === 0) { setText(item.button, 'Revisar pendências'); item.button.dataset.reviewBase = item.id; return; }
+    if (item.remaining > 0) { setText(item.button, 'Higienizar base'); return; }
+    if (item.total > 0 && item.ready === item.total) { item.button.hidden = true; if (item.status !== 'READY') setStatus(item, 'READY'); return; }
+    setText(item.button, 'Higienizar base');
+  });
+}
+
+async function uploadFull(page, button) {
+  const file = page.querySelector('#base-file')?.files?.[0];
+  if (!cid()) return notify('Selecione uma operação.', 'error');
+  if (!file) return notify('Selecione um CSV.', 'error');
+  let started = null;
+  button.disabled = true;
   try {
-    const result = await dataAction('portal.export', { campaignId, addressListId, service, content });
-    textDownload(result.csv, result.fileName, 'text/csv;charset=utf-8');
-    notify(`${Number(result.total || 0).toLocaleString('pt-BR')} cadastros exportados para ${service}.`, 'success');
-    setTimeout(() => location.reload(), 1000);
+    statusBox(page, 'Lendo a base completa…', 'busy');
+    const parsed = Papa.parse(await file.text(), { header: true, skipEmptyLines: true, transformHeader: (value) => String(value || '').trim() });
+    if (parsed.errors?.length && !parsed.data.length) throw new Error(parsed.errors[0].message);
+    const rows = parsed.data.filter((row) => Object.values(row || {}).some((value) => String(value ?? '').trim()));
+    if (!rows.length) throw new Error('O CSV não possui cadastros para importar.');
+    started = await dataAction('addressList.start', { campaignId: cid(), fileName: file.name, metadata: { delimiter: parsed.meta?.delimiter || '', totalRows: rows.length } });
+    const size = Math.max(1, Number(started.chunkSize || CHUNK));
+    for (let index = 0; index < rows.length; index += size) {
+      const end = Math.min(index + size, rows.length);
+      setText(button, `Importando ${fmt(end)} de ${fmt(rows.length)}…`);
+      statusBox(page, `Importando ${fmt(end)} de ${fmt(rows.length)} cadastros…`, 'busy');
+      await dataAction('addressList.append', { campaignId: cid(), addressListId: started.id, rows: rows.slice(index, end) });
+    }
+    await dataAction('addressList.finish', { campaignId: cid(), addressListId: started.id });
+    notify(`${fmt(rows.length)} cadastros recebidos em uma única base.`, 'success');
+    location.reload();
   } catch (error) {
+    if (started?.id) { try { await dataAction('addressList.abort', { campaignId: cid(), addressListId: started.id }); } catch {} }
+    button.disabled = false;
+    setText(button, 'Importar base completa');
+    statusBox(page, error.message, 'error');
     notify(error.message, 'error');
-    if (button) { button.disabled = false; button.textContent = 'Gerar CSV para o Portal Postal'; }
   }
 }
 
-function fixNextAction(page) {
-  const button = page.querySelector('[data-approved-base="export"]');
-  if (!button) return;
-  button.textContent = 'Definir postagem e exportar CSV →';
-  button.dataset.baseExportFocus = '1';
+async function cleanFull(page, button, addressListId) {
+  if (!addressListId || button.disabled) return;
+  const item = baseRows(page).find((row) => row.id === addressListId);
+  const expected = item?.remaining || item?.total || 0;
+  let processed = 0;
+  button.disabled = true;
+  try {
+    while (true) {
+      const raw = await dataAction('addressRows.list', { campaignId: cid(), addressListId, status: 'RAW', limit: CHUNK });
+      if (!raw.length) break;
+      const ids = raw.map((row) => String(row.id || '')).filter(Boolean);
+      if (!ids.length) throw new Error('A higienização não conseguiu identificar o próximo grupo interno.');
+      const result = await dataAction('cleaning.process', { campaignId: cid(), addressListId, rowIds: ids });
+      const count = Number(result?.summary?.processed || 0);
+      if (!count) throw new Error('A higienização não avançou.');
+      processed += count;
+      setText(button, `Higienizando ${fmt(Math.min(expected || processed, processed))}${expected ? ` de ${fmt(expected)}` : ''}…`);
+      statusBox(page, `Higienizando a base completa: ${fmt(processed)}${expected ? ` de ${fmt(expected)}` : ''} cadastros…`, 'busy');
+    }
+    const review = await dataAction('addressRows.list', { campaignId: cid(), addressListId, status: 'REVIEW', limit: 1 });
+    notify(review.length ? 'Higienização concluída. Existem cadastros para revisão.' : 'Higienização concluída para a base completa.', review.length ? 'info' : 'success');
+    location.reload();
+  } catch (error) {
+    button.disabled = false;
+    setText(button, 'Higienizar base');
+    statusBox(page, error.message, 'error');
+    notify(error.message, 'error');
+  }
+}
+
+function value(data, ...keys) {
+  for (const key of keys) if (data?.[key] != null) return String(data[key]);
+  return '';
+}
+
+function reviewMarkup(row) {
+  const data = row.cleaned && Object.keys(row.cleaned).length ? row.cleaned : row.original || {};
+  const issues = (row.issues || []).map((issue) => issue.message || issue.code || issue.field).filter(Boolean).join(' · ');
+  return `<form class="base-review-item" data-review-row="${h(row.id)}"><div class="base-review-head"><div><strong>Linha ${fmt(row.rowNumber)}</strong><span class="base-review-issues">${h(issues || 'Revise os dados.')}</span></div><button class="primary" type="submit">Salvar correção</button></div><div class="base-review-grid">
+    <label class="field"><span>Nome</span><input name="name" value="${h(value(data, 'name', 'NOME', 'DESTINATARIO'))}"></label>
+    <label class="field"><span>CEP</span><input name="zip" maxlength="9" value="${h(value(data, 'zip', 'CEP'))}"></label>
+    <label class="field wide"><span>Endereço</span><input name="street" value="${h(value(data, 'street', 'ENDEREÇO', 'ENDERECO'))}"></label>
+    <label class="field"><span>Número</span><input name="number" value="${h(value(data, 'number', 'NUMERO'))}"></label>
+    <label class="field"><span>Complemento</span><input name="complement" value="${h(value(data, 'complement', 'COMPLEMENTO'))}"></label>
+    <label class="field"><span>Bairro</span><input name="district" value="${h(value(data, 'district', 'BAIRRO'))}"></label>
+    <label class="field"><span>Cidade</span><input name="city" value="${h(value(data, 'city', 'CIDADE'))}"></label>
+    <label class="field"><span>UF</span><input name="uf" maxlength="2" value="${h(value(data, 'uf', 'UF'))}"></label>
+  </div></form>`;
+}
+
+async function openReview(page, addressListId) {
+  let panel = page.querySelector('#base-review-panel');
+  if (!panel) {
+    panel = document.createElement('section');
+    panel.id = 'base-review-panel';
+    panel.className = 'card base-review-panel';
+    const baseCard = [...page.querySelectorAll(':scope > .card')].find((card) => card.querySelector('h2')?.textContent?.trim() === 'Bases recebidas');
+    baseCard?.insertAdjacentElement('afterend', panel);
+  }
+  panel.innerHTML = '<div class="empty">Carregando pendências…</div>';
+  try {
+    const rows = await dataAction('addressRows.list', { campaignId: cid(), addressListId, status: 'REVIEW', limit: REVIEW_LIMIT });
+    reviewCache.clear(); rows.forEach((row) => reviewCache.set(String(row.id), row));
+    if (!rows.length) { panel.innerHTML = '<div class="notice">Revisão concluída. Atualizando a base…</div>'; location.reload(); return; }
+    panel.innerHTML = `<div class="section-title"><div><h2>Revisar pendências da base</h2><p>Corrija somente os cadastros que não passaram na validação.</p></div><small>até ${fmt(REVIEW_LIMIT)} por tela</small></div><div class="base-review-list">${rows.map(reviewMarkup).join('')}</div>`;
+    panel.querySelectorAll('[data-review-row]').forEach((form) => form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const current = event.currentTarget, rowId = current.dataset.reviewRow, source = reviewCache.get(String(rowId)) || {};
+      const button = current.querySelector('button'); button.disabled = true; setText(button, 'Salvando…');
+      try {
+        const data = { ...(source.cleaned || {}), ...Object.fromEntries(new FormData(current)), service: '', content: '' };
+        const result = await dataAction('addressRow.update', { campaignId: cid(), rowId, data });
+        if (result.status === 'READY') { current.remove(); reviewCache.delete(String(rowId)); notify('Cadastro corrigido e aprovado.', 'success'); if (!panel.querySelector('[data-review-row]')) await openReview(page, addressListId); return; }
+        setText(current.querySelector('.base-review-issues'), (result.issues || []).map((issue) => issue.message || issue.code).join(' · ') || 'Ainda há pendências.');
+        button.disabled = false; setText(button, 'Salvar correção');
+      } catch (error) { button.disabled = false; setText(button, 'Salvar correção'); notify(error.message, 'error'); }
+    }));
+    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (error) { panel.innerHTML = `<div class="notice warn">${h(error.message)}</div>`; notify(error.message, 'error'); }
+}
+
+function exportCard(page) {
+  const rows = baseRows(page).filter((item) => !item.row.hidden);
+  const eligible = rows.filter((item) => !item.exported && item.total > 0 && item.ready === item.total && item.review === 0);
+  const exported = rows.filter((item) => item.exported);
+  const options = eligible.map((item) => `<option value="${h(item.id)}">${h(item.fileName)} · ${fmt(item.ready)} cadastros</option>`).join('');
+  const body = eligible.length ? `<div class="form-grid"><label class="field"><span>Base higienizada</span><select id="portal-export-list">${options}</select></label><label class="field"><span>Serviço</span><select id="portal-export-service"><option value="PAC">PAC</option><option value="SEDEX">SEDEX</option></select></label><label class="field wide"><span>Conteúdo</span><input id="portal-export-content" value="PANFLETOS E ADESIVOS DA CAMPANHA"></label><div class="wide"><button id="portal-export-run" class="primary" type="button">Gerar CSV para o Portal Postal</button></div></div>` : exported.length && exported.length === rows.length ? '<div class="notice">A base já foi exportada. O próximo passo é o Portal Postal.</div>' : '<div class="notice">Conclua a higienização e a revisão para liberar os dados de postagem.</div>';
+  return `<section class="card" id="base-export-card" data-export-panel style="margin-top:16px"><div class="section-title"><div><h2>Definir dados da postagem</h2><p>Somente depois da higienização, defina o serviço e o conteúdo do CSV do Portal Postal.</p></div></div>${body}</section>`;
+}
+
+function mountExport(page) {
+  page.querySelector('#base-export-card')?.remove();
+  const baseCard = [...page.querySelectorAll(':scope > .card')].find((card) => card.querySelector('h2')?.textContent?.trim() === 'Bases recebidas');
+  if (!baseCard) return;
+  (page.querySelector('#base-review-panel') || baseCard).insertAdjacentHTML('afterend', exportCard(page));
+  page.querySelector('#portal-export-run')?.addEventListener('click', async () => {
+    const addressListId = page.querySelector('#portal-export-list')?.value || '', service = page.querySelector('#portal-export-service')?.value || '', content = page.querySelector('#portal-export-content')?.value?.trim() || '';
+    if (!addressListId || !content) return notify('Selecione uma base e informe o conteúdo.', 'error');
+    const button = page.querySelector('#portal-export-run'); button.disabled = true; setText(button, 'Gerando CSV…');
+    try { const result = await dataAction('portal.export', { campaignId: cid(), addressListId, service, content }); textDownload(result.csv, result.fileName, 'text/csv;charset=utf-8'); notify(`${fmt(result.total)} cadastros exportados para ${service}.`, 'success'); location.reload(); }
+    catch (error) { button.disabled = false; setText(button, 'Gerar CSV para o Portal Postal'); notify(error.message, 'error'); }
+  });
+}
+
+async function markExports(page) {
+  if (page.dataset.exportState === cid()) return;
+  page.dataset.exportState = cid();
+  try {
+    const exports = await dataAction('portal.exports.list', { campaignId: cid() });
+    const ids = new Set((exports || []).map((item) => String(item.ADDRESS_LIST_ID || item.addressListId || '')).filter(Boolean));
+    baseRows(page).forEach((item) => { if (ids.has(item.id)) { item.row.dataset.baseExported = '1'; setStatus(item, 'EXPORTED'); item.button.hidden = true; } });
+    mountExport(page);
+  } catch {}
 }
 
 function mount() {
   const page = ROOT?.querySelector('.page');
   if (!page?.querySelector('#base-file')) return;
-  hideEarlyPostingFields(page);
-  hideLegacyExportButtons(page);
-  mountExportCard(page);
-  fixNextAction(page);
+  decorate(page);
+  if (!page.querySelector('#base-export-card')) mountExport(page);
+  markExports(page);
 }
 
 ROOT?.addEventListener('click', (event) => {
-  const button = event.target.closest('[data-base-export-focus="1"]');
-  if (!button) return;
-  event.preventDefault();
-  event.stopImmediatePropagation();
-  const panel = ROOT.querySelector('[data-export-panel]');
-  panel?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  panel?.querySelector('#portal-export-service')?.focus();
+  const page = ROOT.querySelector('.page');
+  if (!page?.querySelector('#base-file')) return;
+  const upload = event.target.closest?.('#upload-base');
+  if (upload) { event.preventDefault(); event.stopImmediatePropagation(); uploadFull(page, upload); return; }
+  const review = event.target.closest?.('[data-review-base]');
+  if (review) { event.preventDefault(); event.stopImmediatePropagation(); openReview(page, review.dataset.reviewBase || review.dataset.clean); return; }
+  const clean = event.target.closest?.('[data-clean]');
+  if (clean) { event.preventDefault(); event.stopImmediatePropagation(); cleanFull(page, clean, clean.dataset.clean); }
 }, true);
 
 let scheduled = false;
-const observer = new MutationObserver(() => {
-  if (scheduled) return;
-  scheduled = true;
-  requestAnimationFrame(() => { scheduled = false; mount(); });
-});
+const observer = new MutationObserver(() => { if (scheduled) return; scheduled = true; requestAnimationFrame(() => { scheduled = false; mount(); }); });
 if (ROOT) observer.observe(ROOT, { childList: true, subtree: true });
 mount();
