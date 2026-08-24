@@ -1,3 +1,5 @@
+const CLEANING_REQUEST_CHUNK = 25;
+
 export async function api(path, options = {}) {
   const response = await fetch(path, {
     credentials: "include",
@@ -19,9 +21,35 @@ function isOperationsFrontend() {
   return path === "/eleicoes" || path === "/eleicoes.html" || path === "/portal" || path === "/portal.html" || path.startsWith("/operacoes");
 }
 
-export function dataAction(action, payload = {}) {
+function callDataAction(action, payload = {}) {
   const endpoint = isOperationsFrontend() ? "/api/operations-data" : "/api/data";
   return api(endpoint, { method: "POST", body: JSON.stringify({ action, payload }) });
+}
+
+async function processCleaningInSafeChunks(payload) {
+  const rowIds = Array.isArray(payload?.rowIds) ? payload.rowIds.map(String).filter(Boolean) : [];
+  if (rowIds.length <= CLEANING_REQUEST_CHUNK) return callDataAction("cleaning.process", payload);
+
+  const summary = { processed: 0, ready: 0, review: 0, rejected: 0 };
+  let lastId = "";
+  for (let index = 0; index < rowIds.length; index += CLEANING_REQUEST_CHUNK) {
+    const result = await callDataAction("cleaning.process", {
+      ...payload,
+      rowIds: rowIds.slice(index, index + CLEANING_REQUEST_CHUNK),
+    });
+    lastId = result?.id || lastId;
+    const current = result?.summary || {};
+    summary.processed += Number(current.processed || 0);
+    summary.ready += Number(current.ready || 0);
+    summary.review += Number(current.review || 0);
+    summary.rejected += Number(current.rejected || 0);
+  }
+  return { id: lastId, summary };
+}
+
+export function dataAction(action, payload = {}) {
+  if (action === "cleaning.process") return processCleaningInSafeChunks(payload);
+  return callDataAction(action, payload);
 }
 
 export function downloadBlob(blob, name) {
