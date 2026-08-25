@@ -22,12 +22,14 @@ test('retorno em produção oferece continuação em vez de nova criação', () 
   assert.match(modeFlow, /continueToProduction/);
 });
 
-test('painel da agência carrega validação DC-e e não carrega a antiga ocultação', () => {
+test('painel da agência mantém preflight DC-e e identifica o portal público temporário', () => {
   assert.match(agencyHtml, /elections-document-mode-ui\.js/);
   assert.match(agencyHtml, /elections-production-dce-ui\.js/);
   assert.doesNotMatch(agencyHtml, /elections-release-simplified\.js/);
   assert.match(dceFlow, /productionDce\.preflight/);
-  assert.match(dceFlow, /Abrir Portal do Cliente/);
+  assert.match(dceFlow, /Abrir validação de CNPJ/);
+  assert.match(dceFlow, /portal público está temporariamente em modo demonstração e validação de CNPJ/);
+  assert.doesNotMatch(dceFlow, /Abrir Portal do Cliente/);
 });
 
 test('link do usuário final aponta temporariamente para validação pública de CNPJ', () => {
