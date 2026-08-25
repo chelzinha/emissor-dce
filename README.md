@@ -2,6 +2,34 @@
 
 Aplicação web para que a própria pessoa jurídica não contribuinte do ICMS emita DC-e para remessas PAC e SEDEX à vista, usando o próprio e-CNPJ. O software não emite como agência dos Correios, transportadora, marketplace ou ECT.
 
+## Acessos publicados
+
+A aplicação possui dois acessos independentes no mesmo projeto Netlify:
+
+| Perfil | Endereço | Finalidade |
+|---|---|---|
+| Agência | `https://agf-dce-facil.netlify.app/eleicoes.html` | Preparação, Portal Postal, retorno, escolha documental, produção, impressão, entrega, acompanhamento e relatórios |
+| Usuário final | `https://agf-dce-facil.netlify.app/portal` | Login fornecido pela agência, acompanhamento e autorização da DC-e com o próprio e-CNPJ A1 |
+
+O acesso do usuário final é criado ou vinculado pela agência em **Configurações > Operações > Usuário final**.
+
+## Fluxo operacional integrado
+
+Depois que o retorno do Portal Postal é importado e auditado, a agência escolhe uma única modalidade para o lote:
+
+```text
+Retorno do Portal Postal
+├─ Declaração Simplificada
+│  └─ Impressão → Entrega à operação → Acompanhamento → Relatórios
+└─ DC-e
+   └─ Validação fiscal pela agência
+      └─ Liberação para o Portal do Cliente
+         └─ Autorização com e-CNPJ A1
+            └─ Impressão → Entrega à operação → Acompanhamento → Relatórios
+```
+
+A escolha fica vinculada ao retorno. Um retorno que já gerou lote não pode criar outro lote com modalidade diferente.
+
 ## O que está implementado
 
 - login e isolamento por usuário com Netlify Identity;

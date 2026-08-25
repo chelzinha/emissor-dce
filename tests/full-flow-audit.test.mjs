@@ -6,7 +6,8 @@ const api = fs.readFileSync(new URL('../src/api.js', import.meta.url), 'utf8');
 const baseFlow = fs.readFileSync(new URL('../src/elections-base-flow-v2.js', import.meta.url), 'utf8');
 const baseFlowCss = fs.readFileSync(new URL('../src/elections-base-flow-v2.css', import.meta.url), 'utf8');
 const approved = fs.readFileSync(new URL('../src/elections-stage-shell-ui.js', import.meta.url), 'utf8');
-const simplified = fs.readFileSync(new URL('../src/elections-release-simplified.js', import.meta.url), 'utf8');
+const documentMode = fs.readFileSync(new URL('../src/elections-document-mode-ui.js', import.meta.url), 'utf8');
+const dceUi = fs.readFileSync(new URL('../src/elections-production-dce-ui.js', import.meta.url), 'utf8');
 const portalReturn = fs.readFileSync(new URL('../src/portal-return-service.js', import.meta.url), 'utf8');
 const tracking = fs.readFileSync(new URL('../src/elections-tracking-ui.js', import.meta.url), 'utf8');
 const rates = fs.readFileSync(new URL('../src/elections-rate-table-ui.js', import.meta.url), 'utf8');
@@ -70,10 +71,18 @@ test('outros CSVs grandes também usam divisão interna automática', () => {
   assert.match(rates, /parsed\.data\.slice\(i,i\+chunk\)/);
 });
 
-test('release simplificada não anuncia DC-e em áreas operacionais visíveis', () => {
-  assert.match(simplified, /report-dce/);
-  assert.match(simplified, /Modalidade operacional atual/);
-  assert.match(simplified, /somente um retorno <strong>pronto<\/strong>/);
+test('retorno do Portal exige escolha entre Declaração Simplificada e DC-e', () => {
+  assert.match(documentMode, /Qual documento será usado neste lote/);
+  assert.match(documentMode, /Gerar Declaração Simplificada/);
+  assert.match(documentMode, /Preparar lote para DC-e/);
+  assert.match(documentMode, /status === 'READY'/);
+});
+
+test('fluxo DC-e valida na agência e entrega a autorização ao portal do cliente', () => {
+  assert.match(dceUi, /productionDce\.preflight/);
+  assert.match(dceUi, /Validar e preparar lote DC-e/);
+  assert.match(dceUi, /href="\/portal"/);
+  assert.match(dceUi, /READY_FOR_UNIFIED_LABEL/);
 });
 
 test('passo a passo visível foi consolidado nas oito etapas operacionais atuais', () => {

@@ -1,12 +1,165 @@
 import { dataAction } from "./api.js";
-const ROOT=document.querySelector("#elections-app");
-function h(v){return String(v??"").replace(/[&<>'"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));}
-function campaignId(){return document.querySelector("#campaign-select")?.value||"";}
-function notify(message,type="info"){const box=document.querySelector("#elections-toast");if(!box)return;box.textContent=message;box.className=`elections-toast show ${type}`;setTimeout(()=>box.className="elections-toast",4800);}
-function setBusy(label){document.querySelector("#dce-preflight-busy")?.remove();const x=document.createElement("div");x.id="dce-preflight-busy";x.className="busy-overlay";x.innerHTML=`<div class="busy-card"><div class="spinner"></div><strong>${h(label)}</strong></div>`;document.body.appendChild(x);return()=>x.remove();}
-function statusOf(card){return card.querySelector(".status")?.textContent?.trim()||"";}
-function dceCards(){return [...(ROOT?.querySelectorAll(".page .card")||[])].filter(card=>card.querySelector("h2")?.textContent?.includes("DC-e com e-CNPJ")&&card.querySelector("[data-volumes]"));}
-function issueMarkup(issues){return `<div class="dce-preflight-issues"><strong>${issues.length} objeto(s) com pendências fiscais</strong>${issues.slice(0,20).map(x=>`<div><code>${h(x.trackingCode)}</code><span>${h((x.issues||[]).join(" "))}</span></div>`).join("")}${issues.length>20?`<small>+ ${issues.length-20} ocorrências</small>`:""}</div>`;}
-async function prepare(card,batchId,button){const cid=campaignId();if(!cid)return notify("Selecione uma operação.","error");const stop=setBusy("Executando pre-flight fiscal...");button.disabled=true;try{const result=await dataAction("productionDce.preflight",{campaignId:cid,productionBatchId:batchId});card.querySelector(".dce-preflight-issues")?.remove();if(!result.ready){button.disabled=false;button.textContent="Revisar pendências DC-e";button.insertAdjacentHTML("afterend",issueMarkup(result.issues||[]));notify("O lote ainda possui pendências fiscais.","info");return;}const chip=card.querySelector(".status");if(chip){chip.textContent="DCE_PREPARED";chip.className="status ok";}button.textContent="Lote liberado para o cliente";button.disabled=true;notify(`${result.total} documentos preparados para autorização do cliente.`,"success");}catch(error){button.disabled=false;notify(error.message,"error")}finally{stop();}}
-function decorate(){dceCards().forEach(card=>{if(card.querySelector("[data-dce-preflight]"))return;const volumeButton=card.querySelector("[data-volumes]");const batchId=volumeButton.dataset.volumes;const status=statusOf(card);const actions=volumeButton.closest(".actions")||card;if(status==="AWAITING_DCE_PREPARATION"){const b=document.createElement("button");b.type="button";b.className="primary";b.dataset.dcePreflight=batchId;b.textContent="Preparar lote DC-e";b.addEventListener("click",()=>prepare(card,batchId,b));actions.appendChild(b);}else if(status==="DCE_PREPARED"){const s=document.createElement("span");s.className="dce-client-note";s.dataset.dcePreflight=batchId;s.textContent="Aguardando autorização do cliente";actions.appendChild(s);}else if(status==="DCE_PARTIAL"){const s=document.createElement("span");s.className="dce-client-note warn";s.dataset.dcePreflight=batchId;s.textContent="Autorização parcial";actions.appendChild(s);}else if(status==="READY_FOR_UNIFIED_LABEL"){const s=document.createElement("span");s.className="dce-client-note ok";s.dataset.dcePreflight=batchId;s.textContent="DC-e autorizada";actions.appendChild(s);}})}
-const observer=new MutationObserver(()=>queueMicrotask(decorate));if(ROOT)observer.observe(ROOT,{childList:true,subtree:true});decorate();
+
+const ROOT = document.querySelector("#elections-app");
+
+function h(value) {
+  return String(value ?? "").replace(/[&<>'"]/g, (char) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;"
+  }[char]));
+}
+
+function campaignId() {
+  return document.querySelector("#campaign-select")?.value || "";
+}
+
+function notify(message, type = "info") {
+  const box = document.querySelector("#elections-toast");
+  if (!box) return;
+  box.textContent = message;
+  box.className = `elections-toast show ${type}`;
+  clearTimeout(box._dceTimer);
+  box._dceTimer = setTimeout(() => { box.className = "elections-toast"; }, 4800);
+}
+
+function setBusy(label) {
+  document.querySelector("#dce-preflight-busy")?.remove();
+  const overlay = document.createElement("div");
+  overlay.id = "dce-preflight-busy";
+  overlay.className = "busy-overlay";
+  overlay.innerHTML = `<div class="busy-card"><div class="spinner"></div><strong>${h(label)}</strong></div>`;
+  document.body.appendChild(overlay);
+  return () => overlay.remove();
+}
+
+function statusOf(card) {
+  const chip = card.querySelector(".status");
+  return String(chip?.dataset.statusCode || chip?.textContent || "").trim().toUpperCase();
+}
+
+function dceCards() {
+  return [...(ROOT?.querySelectorAll(".page .card") || [])].filter((card) => {
+    const heading = card.querySelector("h2")?.textContent || "";
+    const mode = [...card.querySelectorAll(".matrix-box")].find((box) => {
+      const label = box.querySelector("span")?.textContent?.trim();
+      return label === "Documento" || label === "Modo";
+    });
+    const modeText = mode?.querySelector("strong")?.textContent || "";
+    return card.querySelector("[data-volumes]") && (/DC-e/i.test(heading) || /DC-e/i.test(modeText));
+  });
+}
+
+function issueMarkup(issues) {
+  return `<div class="dce-preflight-issues"><strong>${issues.length} objeto(s) com pendências fiscais</strong>${issues.slice(0, 20).map((item) => `<div><code>${h(item.trackingCode)}</code><span>${h((item.issues || []).join(" "))}</span></div>`).join("")}${issues.length > 20 ? `<small>+ ${issues.length - 20} ocorrências</small>` : ""}</div>`;
+}
+
+function portalLinkMarkup(className = "ghost") {
+  return `<a class="${className}" data-client-portal-link href="/portal" target="_blank" rel="noopener">Abrir Portal do Cliente</a>`;
+}
+
+function refreshCurrentCampaign() {
+  const select = document.querySelector("#campaign-select");
+  if (select) select.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+async function prepare(card, batchId, button) {
+  const cid = campaignId();
+  if (!cid) return notify("Selecione uma operação.", "error");
+  const stop = setBusy("Validando os dados fiscais do lote...");
+  button.disabled = true;
+  try {
+    const result = await dataAction("productionDce.preflight", {
+      campaignId: cid,
+      productionBatchId: batchId,
+    });
+    card.querySelector(".dce-preflight-issues")?.remove();
+    if (!result.ready) {
+      button.disabled = false;
+      button.textContent = "Revisar pendências da DC-e";
+      button.insertAdjacentHTML("afterend", issueMarkup(result.issues || []));
+      notify("O lote ainda possui pendências fiscais. Corrija os dados antes de liberá-lo ao cliente.", "info");
+      return;
+    }
+    notify(`${result.total} documentos validados. O lote foi liberado para autorização do cliente.`, "success");
+    refreshCurrentCampaign();
+  } catch (error) {
+    button.disabled = false;
+    notify(error.message, "error");
+  } finally {
+    stop();
+  }
+}
+
+function ensureClientPortalAccess(actions, batchId, status, message, className = "") {
+  if (!actions) return;
+  const existing = actions.querySelector(`[data-dce-client-access="${CSS.escape(batchId)}"]`);
+  if (existing?.dataset.dceState === status) return;
+  existing?.remove();
+  const wrapper = document.createElement("div");
+  wrapper.className = `dce-client-access ${className}`.trim();
+  wrapper.dataset.dceClientAccess = batchId;
+  wrapper.dataset.dceState = status;
+  wrapper.innerHTML = `<span>${h(message)}</span>${portalLinkMarkup("secondary")}`;
+  actions.appendChild(wrapper);
+}
+
+function decorate() {
+  dceCards().forEach((card) => {
+    const volumeButton = card.querySelector("[data-volumes]");
+    const batchId = volumeButton?.dataset.volumes;
+    if (!batchId) return;
+    const status = statusOf(card);
+    const actions = volumeButton.closest(".actions") || card;
+    const preflight = actions.querySelector(`[data-dce-preflight="${CSS.escape(batchId)}"]`);
+    const access = actions.querySelector(`[data-dce-client-access="${CSS.escape(batchId)}"]`);
+
+    if (status === "AWAITING_DCE_PREPARATION") {
+      access?.remove();
+      if (preflight) return;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "primary";
+      button.dataset.dcePreflight = batchId;
+      button.textContent = "Validar e preparar lote DC-e";
+      button.title = "Valida destinatários, endereços, conteúdo, valor e códigos municipais antes de liberar o lote ao cliente.";
+      button.addEventListener("click", () => prepare(card, batchId, button));
+      actions.appendChild(button);
+      return;
+    }
+
+    preflight?.remove();
+
+    if (status === "DCE_PREPARED") {
+      ensureClientPortalAccess(actions, batchId, status, "Lote aguardando autorização do cliente com e-CNPJ A1.", "warn");
+      return;
+    }
+
+    if (status === "DCE_RESERVED") {
+      ensureClientPortalAccess(actions, batchId, status, "Autorização fiscal iniciada pelo cliente. Ele pode continuar pelo Portal.", "info");
+      return;
+    }
+
+    if (status === "DCE_PARTIAL") {
+      ensureClientPortalAccess(actions, batchId, status, "Autorização parcial. O cliente deve abrir o Portal para concluir ou revisar rejeições.", "warn");
+      return;
+    }
+
+    if (status === "READY_FOR_UNIFIED_LABEL") {
+      ensureClientPortalAccess(actions, batchId, status, "DC-e autorizada. O lote retornou ao fluxo de impressão.", "ok");
+      return;
+    }
+
+    access?.remove();
+  });
+}
+
+let scheduled = false;
+const observer = new MutationObserver(() => {
+  if (scheduled) return;
+  scheduled = true;
+  requestAnimationFrame(() => {
+    scheduled = false;
+    decorate();
+  });
+});
+if (ROOT) observer.observe(ROOT, { childList: true, subtree: true });
+decorate();
