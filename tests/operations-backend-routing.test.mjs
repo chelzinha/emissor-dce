@@ -7,6 +7,7 @@ const operationsFunction = fs.readFileSync(new URL('../netlify/functions/operati
 const operationsBridge = fs.readFileSync(new URL('../netlify/functions/_shared/operations-apps-script.mjs', import.meta.url), 'utf8');
 const portalUserCreate = fs.readFileSync(new URL('../netlify/functions/portal-user-create.mjs', import.meta.url), 'utf8');
 const agencyHtml = fs.readFileSync(new URL('../eleicoes.html', import.meta.url), 'utf8');
+const clientHtml = fs.readFileSync(new URL('../portal.html', import.meta.url), 'utf8');
 
 test('agency and client frontends route data actions to isolated operations backend', () => {
   assert.match(apiSource, /\/api\/operations-data/);
@@ -27,7 +28,10 @@ test('portal user provisioning uses isolated operations backend', () => {
   assert.match(portalUserCreate, /campaign\.user\.add/);
 });
 
-test('simplified production release does not load agency DC-e module', () => {
-  assert.doesNotMatch(agencyHtml, /elections-production-dce-ui\.js/);
-  assert.match(agencyHtml, /elections-release-simplified\.js/);
+test('release integrada carrega DC-e na agência e no portal do cliente', () => {
+  assert.match(agencyHtml, /elections-production-dce-ui\.js/);
+  assert.match(agencyHtml, /elections-document-mode-ui\.js/);
+  assert.doesNotMatch(agencyHtml, /elections-release-simplified\.js/);
+  assert.match(clientHtml, /client-portal\.js/);
+  assert.doesNotMatch(clientHtml, /client-release-simplified\.js/);
 });
