@@ -18,6 +18,13 @@ test("paginas recebem politica CSP", () => {
   assert.match(config, /frame-ancestors 'none'/);
 });
 
+test("rotas API usam os paths declarados pelas Functions sem rewrite conflitante", () => {
+  const config = read("netlify.toml");
+  assert.doesNotMatch(config, /from = "\/api\/\*"/);
+  assert.match(read("netlify/functions/data.mjs"), /path: "\/api\/data"/);
+  assert.match(read("netlify/functions/portal-login.mjs"), /path: "\/api\/portal\/login"/);
+});
+
 test("QR Code autorizado e persistido e reutilizado na etiqueta", () => {
   assert.match(read("apps-script/Config.gs"), /'QR_CODE'/);
   assert.match(read("apps-script/Batches.gs"), /QR_CODE: result\.qrCode/);
