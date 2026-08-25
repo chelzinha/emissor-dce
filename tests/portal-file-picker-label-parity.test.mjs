@@ -8,48 +8,22 @@ const picker = await readFile(new URL('../src/elections-file-picker-fix.js', imp
 const label = await readFile(new URL('../src/production-label-generator.js', import.meta.url), 'utf8');
 const spec = await import('../src/label-production.js');
 
-test('retorno do Portal usa botoes explicitos para abrir os inputs nativos', () => {
+test('o input de arquivo nativo fica visivel, sem truque de sobreposicao', () => {
   assert.match(html, /elections-file-picker-fix\.js/);
   assert.match(picker, /#portal-return-csv/);
   assert.match(picker, /#portal-return-pdfs/);
   assert.match(picker, /label-setup-modal \[data-stamp\]/);
-  // O botao passou a ser pointer-events:none de proposito: quem recebe o
-  // clique e o input nativo transparente por cima dele.
-  assert.match(picker, /cursor:pointer!important/);
-});
-
-test('o input nativo fica por cima do botao, sem depender de disparo por codigo', () => {
-  // input.click() em campo escondido tem historico de recusa silenciosa: a
-  // chamada e aceita, nao lanca erro e nenhuma janela abre. Confirmado no
-  // navegador em 24/08/2026, com 4 chamadas contadas e zero janelas.
-  // Agora o input fica transparente sobre o botao: o clique e do proprio
-  // usuario no elemento nativo, caminho que o navegador nunca recusa.
-  assert.match(picker, /agf-file-slot/);
-  assert.match(picker, /slot\.append\(button, input\)/);
-  assert.match(picker, /z-index:22!important/);
-  assert.match(picker, /pointer-events:none/);
-  // e o clique nao pode subir e disparar app.innerHTML no meio do caminho
-  assert.match(picker, /input\.addEventListener\('click', \(event\) => event\.stopPropagation\(\)\)/);
-});
-
-test('showPicker e tentado antes do click, com o erro registrado', () => {
-  // showPicker lanca excecao quando e recusado, o que transforma uma falha
-  // invisivel em diagnostico no console.
-  assert.match(picker, /typeof input\.showPicker === 'function'/);
-  assert.match(picker, /showPicker recusado/);
-  assert.match(picker, /input\.click\(\) falhou/);
-});
-
-test('clique dos seletores usa delegacao no document, nao listener por elemento', () => {
-  // shell() faz app.innerHTML a cada render e destroi listeners ligados a
-  // elementos. A delegacao no document e registrada uma vez e sobrevive.
-  assert.match(picker, /document\.addEventListener\('click'/);
-  assert.match(picker, /\[data-agf-picker\]/);
-  // impede que o clique suba e dispare troca de tela antes do seletor abrir
-  assert.match(picker, /stopImmediatePropagation/);
-  // a referencia ao input vive no DOM, nao numa closure
-  assert.match(picker, /dataset\.agfTarget/);
-  assert.doesNotMatch(picker, /button\.addEventListener\('click'/);
+  // O controle nativo do navegador e o unico caminho que nunca e recusado.
+  // Esconder o input e dispara-lo por codigo (input.click ou showPicker)
+  // falhava em silencio: 4 chamadas contadas e zero janelas abertas.
+  assert.match(picker, /agf-native-file-visible/);
+  assert.match(picker, /pointer-events:auto!important/);
+  // as mencoes remanescentes sao de comentario; nao pode haver CHAMADA
+  const semComentarios = picker.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  assert.doesNotMatch(semComentarios, /input\.click\(\)/);
+  assert.doesNotMatch(semComentarios, /\.showPicker\(\)/);
+  // o clique nao pode subir e disparar app.innerHTML no meio do caminho
+  assert.match(picker, /event\.stopPropagation\(\)/);
 });
 
 test('nenhum input de arquivo fica dentro de label', () => {
