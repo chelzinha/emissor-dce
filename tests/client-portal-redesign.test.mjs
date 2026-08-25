@@ -22,8 +22,7 @@ test('redesign preserva o CSS compartilhado da versão final', () => {
 
 test('dashboard demonstrativo recebe hero, cards coloridos e ícones vetoriais', () => {
   assert.match(js, /hero-dashboard/);
-  assert.match(js, /service-pac/);
-  assert.match(js, /service-sedex/);
+  assert.match(js, /service-\$\{tone\}/);
   assert.match(js, /Panorama da operação/);
   assert.match(js, /<svg class="app-icon/);
   assert.match(css, /service-pac/);
