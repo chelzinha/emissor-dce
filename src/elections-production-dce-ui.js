@@ -3,8 +3,8 @@ import { dataAction } from "./api.js";
 const ROOT = document.querySelector("#elections-app");
 
 function h(value) {
-  return String(value ?? "").replace(/[&<>'"]/g, (char) => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;"
+  return String(value ?? "").replace(/[&<>'\"]/g, (char) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '\"': "&quot;"
   }[char]));
 }
 
@@ -52,8 +52,8 @@ function issueMarkup(issues) {
   return `<div class="dce-preflight-issues"><strong>${issues.length} objeto(s) com pendências fiscais</strong>${issues.slice(0, 20).map((item) => `<div><code>${h(item.trackingCode)}</code><span>${h((item.issues || []).join(" "))}</span></div>`).join("")}${issues.length > 20 ? `<small>+ ${issues.length - 20} ocorrências</small>` : ""}</div>`;
 }
 
-function portalLinkMarkup(className = "ghost") {
-  return `<a class="${className}" data-client-portal-link href="/portal" target="_blank" rel="noopener">Abrir Portal do Cliente</a>`;
+function publicValidationLinkMarkup(className = "ghost") {
+  return `<a class="${className}" data-client-validation-link href="/portal" target="_blank" rel="noopener">Abrir validação de CNPJ</a>`;
 }
 
 function refreshCurrentCampaign() {
@@ -76,10 +76,10 @@ async function prepare(card, batchId, button) {
       button.disabled = false;
       button.textContent = "Revisar pendências da DC-e";
       button.insertAdjacentHTML("afterend", issueMarkup(result.issues || []));
-      notify("O lote ainda possui pendências fiscais. Corrija os dados antes de liberá-lo ao cliente.", "info");
+      notify("O lote ainda possui pendências fiscais. Corrija os dados antes de liberá-lo para autorização.", "info");
       return;
     }
-    notify(`${result.total} documentos validados. O lote foi liberado para autorização do cliente.`, "success");
+    notify(`${result.total} documentos validados. O lote fiscal está preparado.`, "success");
     refreshCurrentCampaign();
   } catch (error) {
     button.disabled = false;
@@ -89,7 +89,7 @@ async function prepare(card, batchId, button) {
   }
 }
 
-function ensureClientPortalAccess(actions, batchId, status, message, className = "") {
+function ensureClientState(actions, batchId, status, message, className = "", showValidationLink = false) {
   if (!actions) return;
   const existing = actions.querySelector(`[data-dce-client-access="${CSS.escape(batchId)}"]`);
   if (existing?.dataset.dceState === status) return;
@@ -98,8 +98,18 @@ function ensureClientPortalAccess(actions, batchId, status, message, className =
   wrapper.className = `dce-client-access ${className}`.trim();
   wrapper.dataset.dceClientAccess = batchId;
   wrapper.dataset.dceState = status;
-  wrapper.innerHTML = `<span>${h(message)}</span>${portalLinkMarkup("secondary")}`;
+  wrapper.innerHTML = `<span>${h(message)}</span>${showValidationLink ? publicValidationLinkMarkup("secondary") : ""}`;
   actions.appendChild(wrapper);
+}
+
+function temporaryAuthorizationMessage(status) {
+  if (status === "DCE_PARTIAL") {
+    return "Autorização fiscal parcial registrada. O portal público está temporariamente em modo demonstração e validação de CNPJ, portanto a continuação da autorização não está disponível nesse link nesta fase.";
+  }
+  if (status === "DCE_RESERVED") {
+    return "Autorização fiscal iniciada anteriormente. O portal público está temporariamente em modo demonstração e validação de CNPJ, portanto a continuação da autorização não está disponível nesse link nesta fase.";
+  }
+  return "Lote fiscal validado pela agência. O portal público está temporariamente em modo demonstração e validação de CNPJ. A autorização da DC-e será reativada no portal definitivo.";
 }
 
 function decorate() {
@@ -120,7 +130,7 @@ function decorate() {
       button.className = "primary";
       button.dataset.dcePreflight = batchId;
       button.textContent = "Validar e preparar lote DC-e";
-      button.title = "Valida destinatários, endereços, conteúdo, valor e códigos municipais antes de liberar o lote ao cliente.";
+      button.title = "Valida destinatários, endereços, conteúdo, valor e códigos municipais antes de preparar o lote fiscal.";
       button.addEventListener("click", () => prepare(card, batchId, button));
       actions.appendChild(button);
       return;
@@ -128,23 +138,13 @@ function decorate() {
 
     preflight?.remove();
 
-    if (status === "DCE_PREPARED") {
-      ensureClientPortalAccess(actions, batchId, status, "Lote aguardando autorização do cliente com e-CNPJ A1.", "warn");
-      return;
-    }
-
-    if (status === "DCE_RESERVED") {
-      ensureClientPortalAccess(actions, batchId, status, "Autorização fiscal iniciada pelo cliente. Ele pode continuar pelo Portal.", "info");
-      return;
-    }
-
-    if (status === "DCE_PARTIAL") {
-      ensureClientPortalAccess(actions, batchId, status, "Autorização parcial. O cliente deve abrir o Portal para concluir ou revisar rejeições.", "warn");
+    if (["DCE_PREPARED", "DCE_RESERVED", "DCE_PARTIAL"].includes(status)) {
+      ensureClientState(actions, batchId, status, temporaryAuthorizationMessage(status), status === "DCE_PARTIAL" ? "warn" : "info", true);
       return;
     }
 
     if (status === "READY_FOR_UNIFIED_LABEL") {
-      ensureClientPortalAccess(actions, batchId, status, "DC-e autorizada. O lote retornou ao fluxo de impressão.", "ok");
+      ensureClientState(actions, batchId, status, "DC-e autorizada. O lote está liberado e retornou ao fluxo de produção da etiqueta unificada.", "ok", false);
       return;
     }
 
