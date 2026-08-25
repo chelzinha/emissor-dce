@@ -13,7 +13,31 @@ test('retorno do Portal usa botoes explicitos para abrir os inputs nativos', () 
   assert.match(picker, /#portal-return-csv/);
   assert.match(picker, /#portal-return-pdfs/);
   assert.match(picker, /label-setup-modal \[data-stamp\]/);
-  assert.match(picker, /pointer-events:auto!important/);
+  // O botao passou a ser pointer-events:none de proposito: quem recebe o
+  // clique e o input nativo transparente por cima dele.
+  assert.match(picker, /cursor:pointer!important/);
+});
+
+test('o input nativo fica por cima do botao, sem depender de disparo por codigo', () => {
+  // input.click() em campo escondido tem historico de recusa silenciosa: a
+  // chamada e aceita, nao lanca erro e nenhuma janela abre. Confirmado no
+  // navegador em 24/08/2026, com 4 chamadas contadas e zero janelas.
+  // Agora o input fica transparente sobre o botao: o clique e do proprio
+  // usuario no elemento nativo, caminho que o navegador nunca recusa.
+  assert.match(picker, /agf-file-slot/);
+  assert.match(picker, /slot\.append\(button, input\)/);
+  assert.match(picker, /z-index:22!important/);
+  assert.match(picker, /pointer-events:none/);
+  // e o clique nao pode subir e disparar app.innerHTML no meio do caminho
+  assert.match(picker, /input\.addEventListener\('click', \(event\) => event\.stopPropagation\(\)\)/);
+});
+
+test('showPicker e tentado antes do click, com o erro registrado', () => {
+  // showPicker lanca excecao quando e recusado, o que transforma uma falha
+  // invisivel em diagnostico no console.
+  assert.match(picker, /typeof input\.showPicker === 'function'/);
+  assert.match(picker, /showPicker recusado/);
+  assert.match(picker, /input\.click\(\) falhou/);
 });
 
 test('clique dos seletores usa delegacao no document, nao listener por elemento', () => {
