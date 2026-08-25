@@ -1,14 +1,10 @@
 import './client-cnpj-temp.css';
-import { getUser, logout } from '@netlify/identity';
-import { api, dataAction, fileToBase64 } from './api.js';
+import { api, fileToBase64 } from './api.js';
 
 const root = document.querySelector('#client-portal');
 const toastBox = document.querySelector('#client-toast');
 
 const S = {
-  user: null,
-  campaigns: [],
-  campaignId: '',
   certBase64: '',
   certName: '',
   result: null,
@@ -48,8 +44,12 @@ function busy(label) {
 
 function formatCnpj(value) {
   const d = digits(value).slice(0, 14);
-  if (d.length !== 14) return value || '';
-  return d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
+  if (!d) return '';
+  return d
+    .replace(/^(\d{2})(\d)/, '$1.$2')
+    .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
+    .replace(/\.(\d{3})(\d)/, '.$1/$2')
+    .replace(/(\d{4})(\d)/, '$1-$2');
 }
 
 function validCnpj(value) {
@@ -63,52 +63,6 @@ function validCnpj(value) {
   const first = calc(cnpj.slice(0, 12), [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
   const second = calc(cnpj.slice(0, 12) + first, [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
   return cnpj.endsWith(`${first}${second}`);
-}
-
-function campaign() {
-  return S.campaigns.find((item) => String(item.id) === String(S.campaignId)) || S.campaigns[0] || null;
-}
-
-function userName() {
-  const metadata = S.user?.user_metadata || {};
-  return String(metadata.username || metadata.user_name || metadata.login || S.user?.email || 'Cliente');
-}
-
-function loginView() {
-  root.innerHTML = `<main class="temp-login">
-    <section class="temp-login-card">
-      <img src="/agf-logo.png" alt="AGF José Bonifácio e Correios">
-      <div class="temp-kicker">ACESSO TEMPORÁRIO</div>
-      <h1>Validação do e-CNPJ</h1>
-      <p>Entre com o usuário já cadastrado para validar o CNPJ do certificado A1.</p>
-      <form id="temp-login-form">
-        <label>Usuário<input name="username" autocomplete="username" required></label>
-        <label>Senha<input name="password" type="password" autocomplete="current-password" required></label>
-        <button type="submit">Entrar</button>
-      </form>
-    </section>
-  </main>`;
-
-  root.querySelector('#temp-login-form').onsubmit = async (event) => {
-    event.preventDefault();
-    const stop = busy('Entrando...');
-    try {
-      const values = Object.fromEntries(new FormData(event.currentTarget));
-      const response = await fetch('/api/portal/login', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(values),
-      });
-      const data = await response.json();
-      if (!response.ok || !data.ok) throw new Error(data.error || 'Usuário ou senha inválidos.');
-      location.reload();
-    } catch (error) {
-      toast(error.message, 'error');
-    } finally {
-      stop();
-    }
-  };
 }
 
 function resultMarkup() {
@@ -132,21 +86,16 @@ function resultMarkup() {
 }
 
 function appView() {
-  const linked = campaign();
-  const linkedCnpj = linked?.cnpj || '';
   root.innerHTML = `<main class="temp-page">
     <header class="temp-header">
       <img src="/agf-logo.png" alt="AGF José Bonifácio e Correios">
-      <div class="temp-user">
-        <span>${h(userName())}</span>
-        <button type="button" id="temp-signout">Sair</button>
-      </div>
+      <span class="direct-access">Demonstração</span>
     </header>
 
     <section class="temp-hero">
       <span class="temp-badge">VERSÃO TEMPORÁRIA</span>
       <h1>Validar e-CNPJ A1</h1>
-      <p>Nesta versão, o portal serve somente para confirmar se o CNPJ informado corresponde ao CNPJ do certificado digital.</p>
+      <p>Acesso direto, sem login. Nesta versão, o portal serve somente para confirmar se o CNPJ informado corresponde ao CNPJ do certificado digital.</p>
     </section>
 
     <section class="demo-panel">
@@ -163,19 +112,19 @@ function appView() {
         <div><strong>${fmt(DEMO.pac)}</strong><span>PAC</span></div>
         <div><strong>${fmt(DEMO.sedex)}</strong><span>SEDEX</span></div>
       </div>
-      <p class="demo-note">Os números acima são apenas ilustrativos para deixar o painel preenchido durante esta fase de testes.</p>
+      <p class="demo-note">Os números acima são apenas ilustrativos para demonstração comercial. Nenhum deles representa uma operação real.</p>
     </section>
 
     <section class="validation-card">
       <div class="validation-copy">
         <span>VALIDAÇÃO REAL</span>
         <h2>Confirme o CNPJ do certificado</h2>
-        <p>O certificado e a senha são usados somente durante esta validação e não ficam salvos no navegador.</p>
+        <p>Informe o CNPJ, selecione o e-CNPJ A1 e digite a senha. O arquivo e a senha são usados somente para esta leitura e não são persistidos pelo portal.</p>
       </div>
       <form id="cnpj-validation-form">
         <label>CNPJ da empresa
-          <input id="target-cnpj" name="cnpj" inputmode="numeric" autocomplete="off" placeholder="00.000.000/0000-00" value="${h(formatCnpj(linkedCnpj))}" required>
-          ${linkedCnpj ? '<small>Preenchido com o CNPJ vinculado ao seu acesso. Você pode alterá-lo apenas para testes.</small>' : '<small>Informe o CNPJ que deseja comparar com o certificado.</small>'}
+          <input id="target-cnpj" name="cnpj" inputmode="numeric" autocomplete="off" maxlength="18" placeholder="00.000.000/0000-00" required>
+          <small>Digite o CNPJ que deseja comparar com o certificado.</small>
         </label>
 
         <label>Certificado e-CNPJ A1
@@ -200,22 +149,15 @@ function appView() {
         <li>valida o formato e os dígitos do CNPJ;</li>
         <li>lê o CNPJ existente no certificado A1;</li>
         <li>compara os dois CNPJs e informa se correspondem;</li>
-        <li>não autoriza DC-e, não calcula preços e não exibe dashboard operacional.</li>
+        <li>não autoriza DC-e, não calcula preços e não exibe dashboard operacional;</li>
+        <li>pode ser aberta diretamente pelo link público para demonstração.</li>
       </ul>
     </section>
   </main>`;
 
-  root.querySelector('#temp-signout').onclick = async () => {
-    await logout();
-    S.user = null;
-    loginView();
-  };
-
   const cnpjInput = root.querySelector('#target-cnpj');
   cnpjInput.addEventListener('input', () => {
-    const cursorAtEnd = cnpjInput.selectionStart === cnpjInput.value.length;
     cnpjInput.value = formatCnpj(cnpjInput.value);
-    if (cursorAtEnd) cnpjInput.setSelectionRange(cnpjInput.value.length, cnpjInput.value.length);
   });
 
   root.querySelector('#temp-cert').addEventListener('change', async (event) => {
@@ -224,6 +166,11 @@ function appView() {
     S.certName = '';
     root.querySelector('#temp-cert-name').textContent = file ? file.name : 'Selecione um arquivo .pfx ou .p12';
     if (!file) return;
+    if (file.size > 3_500_000) {
+      event.target.value = '';
+      root.querySelector('#temp-cert-name').textContent = 'Selecione um arquivo .pfx ou .p12';
+      return toast('O certificado é maior que o limite permitido para esta demonstração.', 'error');
+    }
     S.certName = file.name;
     S.certBase64 = await fileToBase64(file);
   });
@@ -243,7 +190,7 @@ async function validateCnpjCertificate(event) {
 
   const stop = busy('Validando CNPJ...');
   try {
-    const certificate = await api('/api/dce/certificate', {
+    const certificate = await api('/api/cnpj/certificate', {
       method: 'POST',
       body: JSON.stringify({ certificateBase64: S.certBase64, passphrase }),
     });
@@ -273,22 +220,4 @@ async function validateCnpjCertificate(event) {
   }
 }
 
-async function start() {
-  const stop = busy('Abrindo validação...');
-  try {
-    S.campaigns = await dataAction('campaigns.list', {});
-    S.campaignId = S.campaigns[0]?.id || '';
-    appView();
-  } catch (error) {
-    toast(error.message, 'error');
-    appView();
-  } finally {
-    stop();
-  }
-}
-
-(async () => {
-  try { S.user = await getUser(); } catch {}
-  if (S.user) await start();
-  else loginView();
-})();
+appView();
