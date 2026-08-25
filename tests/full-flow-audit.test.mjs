@@ -10,7 +10,9 @@ const documentMode = fs.readFileSync(new URL('../src/elections-document-mode-ui.
 const dceUi = fs.readFileSync(new URL('../src/elections-production-dce-ui.js', import.meta.url), 'utf8');
 const portalReturn = fs.readFileSync(new URL('../src/portal-return-service.js', import.meta.url), 'utf8');
 const tracking = fs.readFileSync(new URL('../src/elections-tracking-ui.js', import.meta.url), 'utf8');
+const reports = fs.readFileSync(new URL('../src/elections-reports-ui.js', import.meta.url), 'utf8');
 const rates = fs.readFileSync(new URL('../src/elections-rate-table-ui.js', import.meta.url), 'utf8');
+const localization = fs.readFileSync(new URL('../src/elections-localization-ui.js', import.meta.url), 'utf8');
 
 test('base completa é importada em uma única ação com divisão apenas interna', () => {
   assert.match(baseFlow, /Importar base completa/);
@@ -71,11 +73,13 @@ test('outros CSVs grandes também usam divisão interna automática', () => {
   assert.match(rates, /parsed\.data\.slice\(i,i\+chunk\)/);
 });
 
-test('retorno do Portal exige escolha entre Declaração Simplificada e DC-e', () => {
+test('escolha entre Declaração Simplificada e DC-e é uma etapa explícita após a auditoria', () => {
+  assert.match(approved, /\[5, 'Auditar Data Matrix', 'returns'/);
+  assert.match(approved, /\[6, 'Escolher documento', 'returns'/);
   assert.match(documentMode, /Qual documento será usado neste lote/);
   assert.match(documentMode, /Gerar Declaração Simplificada/);
-  assert.match(documentMode, /Preparar lote para DC-e/);
-  assert.match(documentMode, /status === 'READY'/);
+  assert.match(documentMode, /Gerar DC-e/);
+  assert.match(documentMode, /etapa 6/);
 });
 
 test('fluxo DC-e valida na agência e entrega a autorização ao portal do cliente', () => {
@@ -85,11 +89,17 @@ test('fluxo DC-e valida na agência e entrega a autorização ao portal do clien
   assert.match(dceUi, /READY_FOR_UNIFIED_LABEL/);
 });
 
-test('passo a passo visível foi consolidado nas oito etapas operacionais atuais', () => {
-  for (const label of ['Preparação', 'Portal Postal', 'Retorno do Portal', 'Configurar etiqueta', 'Auditar Data Matrix', 'Produção', 'Impressão', 'Entrega à operação']) {
+test('fluxo visível cobre todas as onze etapas até acompanhamento e relatórios', () => {
+  for (const label of ['Preparação', 'Portal Postal', 'Retorno do Portal', 'Configurar etiqueta', 'Auditar Data Matrix', 'Escolher documento', 'Produção', 'Impressão', 'Entrega à operação', 'Acompanhamento', 'Relatórios']) {
     assert.match(approved, new RegExp(label));
   }
-  assert.doesNotMatch(approved, /\[9,\s*'Postagem'/);
-  assert.match(approved, /STATUS_LABELS/);
-  assert.match(approved, /READY_FOR_UNIFIED_LABEL:'Pronto para produção'/);
+  assert.match(tracking, /Acompanhamento/);
+  assert.match(reports, /RELATÓRIOS/);
+  assert.match(approved, /READY_FOR_UNIFIED_LABEL: 'Pronto para produção'/);
+});
+
+test('eventos técnicos do diário da operação têm tradução para português', () => {
+  for (const code of ['LABEL_GENERATED', 'LABEL_PRINTED', 'LABEL_TEST_APPROVED', 'MATRIX_100_VERIFIED', 'PORTAL_RETURN_IMPORTED', 'ADDRESS_CLEANING_COMPLETED']) {
+    assert.match(localization, new RegExp(code));
+  }
 });
