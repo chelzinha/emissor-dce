@@ -17,7 +17,7 @@ test('retorno pronto oferece as duas modalidades documentais', () => {
 test('retorno em produção oferece continuação em vez de nova criação', () => {
   assert.match(modeFlow, /status === 'IN_PRODUCTION'/);
   assert.match(modeFlow, /Continuar na Produção/);
-  assert.match(modeFlow, /dataDocumentModeState/);
+  assert.match(modeFlow, /dataset\.documentModeState/);
   assert.match(modeFlow, /continueToProduction/);
 });
 
