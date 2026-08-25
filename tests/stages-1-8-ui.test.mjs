@@ -38,9 +38,8 @@ test('etapas 3, 4, 5 e 6 têm conteúdo e títulos distintos', () => {
 });
 
 test('navegação entre etapas da mesma tela preserva os inputs de arquivo', () => {
-  assert.match(stages, /currentView === stage\[2\]/);
-  assert.match(stages, /decorate\(\)/);
-  assert.doesNotMatch(stages, /currentView === stage\[2\][\s\S]{0,120}sourceButton\(stage\[2\]\)\?\.click/);
+  assert.match(stages, /if \(currentView === stage\[2\]\) \{[\s\S]*?decorate\(\);[\s\S]*?focusStage\(stage\);[\s\S]*?return;[\s\S]*?\}/);
+  assert.match(stages, /\}\s*sourceButton\(stage\[2\]\)\?\.click\(\);/);
 });
 
 test('chips e eventos técnicos são apresentados em português', () => {
