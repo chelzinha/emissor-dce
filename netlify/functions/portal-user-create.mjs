@@ -1,18 +1,9 @@
 import { admin, verifyRequestOrigin } from '@netlify/identity';
 import { callOperationsAppsScript } from './_shared/operations-apps-script.mjs';
 import { json, parseJson, publicError, requireUser } from './_shared/http.mjs';
+import { listAllIdentityUsers } from './_shared/identity-users.mjs';
 import { explicitUsername, findIdentityUserByUsername } from './_shared/portal-username.mjs';
 import { findIdentityUserByEmail, normalizePortalProvisionInput } from './_shared/portal-user-provision.mjs';
-
-async function listAllIdentityUsers() {
-  const rows = [];
-  for (let page = 1; page <= 50; page += 1) {
-    const batch = await admin.listUsers({ page, perPage: 100 });
-    rows.push(...batch);
-    if (batch.length < 100) break;
-  }
-  return rows;
-}
 
 export default async function handler(req) {
   if (req.method !== 'POST') return json({ ok: false, error: 'Método não permitido' }, 405);
@@ -25,7 +16,7 @@ export default async function handler(req) {
     const campaign = await callOperationsAppsScript('campaign.get', { campaignId: input.campaignId }, actor);
     if (String(campaign?.role || '') !== 'AGENCY_ADMIN') return json({ ok: false, error: 'Seu perfil não permite criar acessos.' }, 403);
 
-    const users = await listAllIdentityUsers();
+    const users = await listAllIdentityUsers((options) => admin.listUsers(options));
     const byUsername = findIdentityUserByUsername(users, input.username);
     const byEmail = findIdentityUserByEmail(users, input.email);
     if (byUsername && byEmail && String(byUsername.id) !== String(byEmail.id)) {

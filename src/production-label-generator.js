@@ -73,6 +73,8 @@ function money(value) {
 }
 
 function fmtDoc(value) {
+  const raw = String(value || '').trim();
+  if (raw && !/^[\d./-]+$/.test(raw)) return raw;
   const d = digits(value);
   if (d.length === 14) return d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
   if (d.length === 11) return d.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4');
@@ -311,6 +313,7 @@ function recipientAddress(object) {
   const a = r.address || {};
   return {
     document: r.document || r.cpfCnpj || '',
+    documentType: r.documentType || '',
     name: r.name || '',
     street: a.street || '',
     number: a.number || '',
@@ -379,7 +382,7 @@ async function drawPostal(page, pdf, fonts, object, matrixDataUrl, postageMarkDa
   rect(page, M, y, 92, Z.recipient);
   rect(page, M, y, 30, 4.6, { fill: INK });
   fitText(page, fonts.bold, 'Destinatário', M + 2, y + 3.4, 26, 7, 5, 'center', rgb(1, 1, 1));
-  fitText(page, fonts.regular, `CPF/CNPJ: ${fmtDoc(r.document)}`, 36, y + 3.4, 20, 5, 4);
+  fitText(page, fonts.regular, `${r.documentType === 'idOutros' ? 'Documento' : 'CPF/CNPJ'}: ${fmtDoc(r.document)}`, 36, y + 3.4, 20, 5, 4);
   fitText(page, fonts.bold, upper(r.name), M + 2, y + 9, 49, 10.5, 6);
   fitText(page, fonts.regular, upper([r.street, r.number].filter(Boolean).join(', ')), M + 2, y + 13.2, 49, 8, 5);
   fitText(page, fonts.regular, upper([r.complement, r.district].filter(Boolean).join(', ')), M + 2, y + 17, 49, 7, 4.5);
@@ -491,7 +494,7 @@ async function drawDace(page, pdf, fonts, object, top) {
   top += Z.items;
   rect(page, M, top, 92, Z.legal);
 
-  const qrUrl = `https://www.fazenda.pr.gov.br/dce/qrcode?chDCe=${digits(d.accessKey)}&tpAmb=${d.environment || '2'}`;
+  const qrUrl = String(d.qrCode || `https://www.fazenda.pr.gov.br/dce/qrcode?chDCe=${digits(d.accessKey)}&tpAmb=${d.environment || '2'}`);
   const qrData = await QRCode.toDataURL(qrUrl, { margin: 0, width: 180, errorCorrectionLevel: 'M' });
   const qr = await image(pdf, qrData);
   page.drawImage(qr, { x: mm(M + 1.5), y: mm(PAGE_H - top - 14), width: mm(13), height: mm(13) });

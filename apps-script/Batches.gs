@@ -51,7 +51,7 @@ function prepareBatch_(userId, payload) {
       return {
         ID: uuid_(), USER_ID: userId, BATCH_ID: batchId, REMITTANCE_ID: row.ID,
         CNPJ: company.CNPJ, SERIES: company.SERIES, NUMBER: firstNumber + index, NUMERIC_CODE: numericCodes[index],
-        ACCESS_KEY: '', STATUS: 'PREPARED', CSTAT: '', REASON: '', PROTOCOL: '',
+        ACCESS_KEY: '', STATUS: 'PREPARED', CSTAT: '', REASON: '', PROTOCOL: '', QR_CODE: '',
         AUTHORIZED_AT: '', SIGNED_XML_FILE_ID: '', PROCESSED_XML_FILE_ID: '', DACE_FILE_ID: '',
         CREATED_AT: now, UPDATED_AT: now
       };
@@ -86,7 +86,7 @@ function getBatch_(userId, payload) {
         service: String(remittance && remittance.SERVICE || ''),
         identification: { series: Number(dce.SERIES), number: Number(dce.NUMBER), numericCode: String(dce.NUMERIC_CODE), environment: String(batch.ENVIRONMENT), authorizationSite: '0' },
         issuer: profile, recipient: stored.recipient, items: stored.items, additionalInfo: stored.additionalInfo || ''
-        , status: String(dce.STATUS), accessKey: String(dce.ACCESS_KEY || '')
+        , status: String(dce.STATUS), accessKey: String(dce.ACCESS_KEY || ''), qrCode: String(dce.QR_CODE || '')
       };
     });
   return { batch: publicRecord_(batch), documents: documents };
@@ -114,7 +114,7 @@ function saveBatchResults_(userId, payload) {
     updateRow_('DCE', dce._rowNumber, {
       ACCESS_KEY: result.accessKey || dce.ACCESS_KEY, STATUS: status,
       CSTAT: result.cStat || '', REASON: result.reason || result.error || '',
-      PROTOCOL: result.protocolNumber || '', AUTHORIZED_AT: result.receivedAt || '',
+      PROTOCOL: result.protocolNumber || '', QR_CODE: result.qrCode || dce.QR_CODE || '', AUTHORIZED_AT: result.receivedAt || '',
       SIGNED_XML_FILE_ID: signedId, PROCESSED_XML_FILE_ID: processedId, UPDATED_AT: nowIso_()
     });
     const remittance = remittanceRows.find(function(row) { return String(row.ID) === String(dce.REMITTANCE_ID); });

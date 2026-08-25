@@ -5,6 +5,7 @@ const HEADER_ALIASES = Object.freeze({
   trackingCode: ["OBJETO", "OBJETO_POSTAL", "NUMERO_ETIQUETA", "CODIGO_RASTREAMENTO", "SRO"],
   service: ["SERVICO", "TIPO_SERVICO"],
   recipientName: ["DESTINATARIO", "NOME_DESTINATARIO", "NOME"],
+  recipientDocumentType: ["TIPO_DOCUMENTO", "DOCUMENT_TYPE", "TIPO_DOC"],
   recipientDocument: ["CPF_CNPJ", "CPFCNPJ", "DOCUMENTO", "CPF", "CNPJ"],
   street: ["ENDERECO", "LOGRADOURO"],
   number: ["NUM", "NUMERO"],
@@ -75,6 +76,16 @@ export function normalizeService(value) {
   return service;
 }
 
+function normalizeRecipientDocument(value, explicitType) {
+  const raw = String(value || "").trim();
+  const type = String(explicitType || "").trim().toUpperCase();
+  const documentType = ["IDOUTROS", "OUTRO", "OUTROS"].includes(type) ? "idOutros"
+    : type === "CNPJ" ? "CNPJ" : type === "CPF" ? "CPF"
+      : raw && !/^[\d./-]+$/.test(raw) ? "idOutros"
+        : raw.replace(/\D/g, "").length === 14 ? "CNPJ" : "CPF";
+  return { documentType, document: documentType === "idOutros" ? raw : raw.replace(/\D/g, "") };
+}
+
 export function parsePortalReturnCsv(text, forcedDelimiter = "auto") {
   const delimiter = !forcedDelimiter || forcedDelimiter === "auto" ? detectDelimiter(text) : forcedDelimiter;
   const parsed = parseRows(text, delimiter);
@@ -89,13 +100,18 @@ export function parsePortalReturnCsv(text, forcedDelimiter = "auto") {
     headers.forEach((header, column) => { raw[header] = cells[column] ?? ""; });
     const trackingCode = pick(raw, HEADER_ALIASES.trackingCode).replace(/\s/g, "").toUpperCase();
     const service = normalizeService(pick(raw, HEADER_ALIASES.service));
+    const recipientDocument = normalizeRecipientDocument(
+      pick(raw, HEADER_ALIASES.recipientDocument),
+      pick(raw, HEADER_ALIASES.recipientDocumentType)
+    );
     const normalized = {
       rowNumber: index + 2,
       trackingCode,
       service,
       recipient: {
         name: pick(raw, HEADER_ALIASES.recipientName),
-        document: pick(raw, HEADER_ALIASES.recipientDocument).replace(/\D/g, ""),
+        document: recipientDocument.document,
+        documentType: recipientDocument.documentType,
         address: {
           street: pick(raw, HEADER_ALIASES.street),
           number: pick(raw, HEADER_ALIASES.number),

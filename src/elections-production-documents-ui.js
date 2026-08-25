@@ -1,10 +1,15 @@
 import './elections-production-documents-ui.css';
 import { dataAction } from './api.js';
-import { generateProductionTestPdf, generateProductionVolumePdf } from './production-label-generator.js';
 import { getPortalReturnAssets } from './portal-assets.js';
 import { isLabelSetupComplete } from './label-setup.js';
 
 const ROOT = document.querySelector('#elections-app');
+let generatorPromise;
+
+function loadGenerator() {
+  generatorPromise ||= import('./production-label-generator.js');
+  return generatorPromise;
+}
 
 function h(value) {
   return String(value ?? '').replace(/[&<>'"]/g, (char) => ({
@@ -281,6 +286,7 @@ async function generateTest(card, batchId) {
   const buttons = [...host.querySelectorAll('button')];
   buttons.forEach((button) => { button.disabled = true; });
   try {
+    const { generateProductionTestPdf } = await loadGenerator();
     await generateProductionTestPdf(campaignId(), batchId, (message) => setStatus(status, message, 'busy'));
     setStatus(status, 'Etiqueta unificada teste gerada com a chancela configurada. Imprima somente esta página e valide o SRO no leitor físico antes de liberar os volumes.', 'ok');
     notify('PDF da etiqueta unificada teste gerado.', 'success');
@@ -298,6 +304,7 @@ async function generateVolume(card, batchId, volumeId) {
   const buttons = [...host.querySelectorAll('button')];
   buttons.forEach((button) => { button.disabled = true; });
   try {
+    const { generateProductionVolumePdf } = await loadGenerator();
     const data = await generateProductionVolumePdf(
       campaignId(),
       batchId,

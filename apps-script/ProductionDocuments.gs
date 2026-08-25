@@ -67,6 +67,7 @@ function productionDocumentsDceMap_(batch) {
     byObject[objectId] = {
       status: String(dce.STATUS || ''), series: Number(dce.SERIES || 0), number: Number(dce.NUMBER || 0),
       accessKey: String(dce.ACCESS_KEY || ''), protocol: String(dce.PROTOCOL || ''),
+      qrCode: String(dce.QR_CODE || ''),
       authorizedAt: String(dce.AUTHORIZED_AT || ''), environment: String(fiscalBatch.ENVIRONMENT || '2'),
       issuer: issuer
     };

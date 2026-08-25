@@ -57,6 +57,7 @@ setApiToken('COLE_AQUI_O_SEGREDO_LONGO')
 8. Copie a URL terminada em `/exec`.
 
 Para atualizar depois, crie uma nova versão da mesma implantação. Não coloque o segredo no repositório.
+Sempre que atualizar os arquivos `.gs`, execute `setupProject()` novamente antes de publicar a nova versão; a rotina migra as colunas pelo nome e preserva os dados existentes.
 
 ## 2. Publicar no GitHub e Netlify
 
@@ -82,6 +83,8 @@ No Netlify:
 |---|---|
 | `APPS_SCRIPT_URL` | URL `/exec` da implantação do Apps Script |
 | `APPS_SCRIPT_TOKEN` | mesmo segredo usado em `setApiToken()` |
+| `OPERATIONS_APPS_SCRIPT_URL` | URL `/exec` da implantação operacional usada por eleições e Portal Postal |
+| `OPERATIONS_APPS_SCRIPT_TOKEN` | segredo da implantação operacional; mantenha separado do token fiscal |
 | `DCE_ALLOW_DEV_AUTH` | `false` em produção |
 | `DCE_MAX_PER_REQUEST` | `5` é um valor conservador |
 

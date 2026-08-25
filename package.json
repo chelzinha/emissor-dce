@@ -12,18 +12,19 @@
   },
   "dependencies": {
     "@netlify/identity": "^2.0.0",
+    "@zxing/library": "^0.21.3",
     "@xmldom/xmldom": "^0.9.11",
     "bwip-js": "^4.11.3",
     "fast-xml-parser": "^5.11.0",
     "node-forge": "^1.4.0",
     "papaparse": "^5.6.0",
     "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^4.10.38",
     "qrcode": "^1.5.4",
     "xml-crypto": "^6.1.2"
   },
   "devDependencies": {
     "@netlify/functions": "^6.0.0",
-    "@netlify/vite-plugin": "^2.12.9",
     "vite": "^8.2.1"
   },
   "engines": {

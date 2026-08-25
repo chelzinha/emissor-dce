@@ -1,9 +1,14 @@
 import './elections-internal-delivery-ui.css';
 import { dataAction } from './api.js';
-import { generateInternalDeliveryManifest, generateInternalDeliveryVolumeLabels } from './internal-delivery-generator.js';
 
 const ROOT = document.querySelector('#elections-app');
 let renderToken = 0;
+let deliveryGeneratorPromise;
+
+function loadDeliveryGenerator() {
+  deliveryGeneratorPromise ||= import('./internal-delivery-generator.js');
+  return deliveryGeneratorPromise;
+}
 
 function h(value) { return String(value ?? '').replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char])); }
 function fmt(value) { return new Intl.NumberFormat('pt-BR').format(Number(value || 0)); }
@@ -167,8 +172,14 @@ async function renderPanel(panel, campaignOverride = null) {
     if (token !== renderToken) return;
     panel.innerHTML = `<div class="internal-delivery-head"><div><p class="eyebrow">ETAPA 8</p><h2>Entrega à operação</h2><p>Selecione os lotes que serão entregues juntos, escolha a data e só então gere as etiquetas de controle dos volumes.</p></div></div>${activePlan ? planMarkup(activePlan) : selectorMarkup(eligible)}${historyMarkup(campaign)}`;
     if (activePlan) {
-      panel.querySelector('[data-download-volume-labels]')?.addEventListener('click', () => generateInternalDeliveryVolumeLabels(activePlan, campaign));
-      panel.querySelector('[data-download-manifest]')?.addEventListener('click', () => generateInternalDeliveryManifest(activePlan, campaign));
+      panel.querySelector('[data-download-volume-labels]')?.addEventListener('click', async () => {
+        const { generateInternalDeliveryVolumeLabels } = await loadDeliveryGenerator();
+        await generateInternalDeliveryVolumeLabels(activePlan, campaign);
+      });
+      panel.querySelector('[data-download-manifest]')?.addEventListener('click', async () => {
+        const { generateInternalDeliveryManifest } = await loadDeliveryGenerator();
+        await generateInternalDeliveryManifest(activePlan, campaign);
+      });
       panel.querySelector('[data-unlink-delivery]')?.addEventListener('click', () => unlinkPlan(panel, campaign, activePlan));
       panel.querySelector('[data-confirm-internal-delivery]')?.addEventListener('click', () => confirmPlan(panel, campaign, activePlan));
     } else {

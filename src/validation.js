@@ -24,6 +24,10 @@ export function isCpf(value) {
   return calc(9) === Number(cpf[9]) && calc(10) === Number(cpf[10]);
 }
 
+export function isIdOutros(value) {
+  return /^[\u0021-\u00FF]{2,60}$/.test(String(value || "").trim());
+}
+
 export function validateRemittance(row) {
   const errors = [];
   const r = row.document?.recipient || {};
@@ -32,7 +36,10 @@ export function validateRemittance(row) {
   if (!/^[A-Z]{2}\d{9}BR$/.test(row.trackingCode || "")) errors.push("SRO");
   if (!["PAC", "SEDEX"].includes(row.service)) errors.push("serviço");
   if (!r.name) errors.push("destinatário");
-  if (!(r.documentType === "CNPJ" ? isCnpj(r.document) : isCpf(r.document))) errors.push("CPF/CNPJ");
+  const documentValid = r.documentType === "CNPJ" ? isCnpj(r.document)
+    : r.documentType === "idOutros" ? isIdOutros(r.document)
+      : isCpf(r.document);
+  if (!documentValid) errors.push("documento");
   for (const [label, value] of [["logradouro", a.street], ["número", a.number], ["bairro", a.district], ["município", a.city]]) {
     if (!String(value || "").trim()) errors.push(label);
   }

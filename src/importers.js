@@ -2,7 +2,8 @@ import Papa from "papaparse";
 
 export const FIELD_DEFINITIONS = [
   ["trackingCode", "Código SRO", true], ["service", "Serviço", true],
-  ["recipientName", "Destinatário", true], ["recipientDocument", "CPF/CNPJ", true],
+  ["recipientName", "Destinatário", true], ["recipientDocumentType", "Tipo do documento", false],
+  ["recipientDocument", "CPF/CNPJ/Outro", true],
   ["street", "Logradouro", true], ["number", "Número", true], ["complement", "Complemento", false],
   ["district", "Bairro", true], ["city", "Município", true], ["uf", "UF", true],
   ["zip", "CEP", true], ["cityCode", "Código IBGE", false], ["email", "E-mail", false],
@@ -13,6 +14,7 @@ export const FIELD_DEFINITIONS = [
 const ALIASES = {
   trackingCode: ["OBJETO", "OBJETO_POSTAL", "NUMERO_ETIQUETA", "CODIGO_RASTREAMENTO", "SRO"],
   service: ["SERVICO", "TIPO_SERVICO"], recipientName: ["DESTINATARIO", "NOME_DESTINATARIO", "NOME"],
+  recipientDocumentType: ["TIPO_DOCUMENTO", "DOCUMENT_TYPE", "TIPO_DOC"],
   recipientDocument: ["CPF_CNPJ", "CPFCNPJ", "DOCUMENTO", "CPF", "CNPJ"], street: ["ENDERECO", "LOGRADOURO"],
   number: ["NUM", "NUMERO"], complement: ["COMPL", "COMPLEMENTO"], district: ["BAIRRO"],
   city: ["CIDADE", "MUNICIPIO"], uf: ["UF", "ESTADO"], zip: ["CEP"], cityCode: ["CODIGO_IBGE", "IBGE", "CMUN"],
@@ -85,10 +87,22 @@ function numeric(value) {
   return Number(normalized || 0);
 }
 
+export function inferRecipientDocumentType(value, explicitType = "") {
+  const type = String(explicitType || "").trim().toUpperCase();
+  if (type === "IDOUTROS" || type === "OUTRO" || type === "OUTROS") return "idOutros";
+  if (type === "CNPJ") return "CNPJ";
+  if (type === "CPF") return "CPF";
+  const raw = String(value || "").trim();
+  if (raw && !/^[\d./-]+$/.test(raw)) return "idOutros";
+  return raw.replace(/\D/g, "").length === 14 ? "CNPJ" : "CPF";
+}
+
 export function mapRows(rows, mapping, defaults = {}) {
   const get = (row, field) => mapping[field] ? row[mapping[field]] : defaults[field];
   return rows.map((row, index) => {
-    const doc = String(get(row, "recipientDocument") || "").replace(/\D/g, "");
+    const rawDocument = String(get(row, "recipientDocument") || "").trim();
+    const documentType = inferRecipientDocumentType(rawDocument, get(row, "recipientDocumentType"));
+    const doc = documentType === "idOutros" ? rawDocument : rawDocument.replace(/\D/g, "");
     const quantity = numeric(get(row, "quantity")) || numeric(defaults.quantity) || 1;
     const unitValue = numeric(get(row, "unitValue")) || numeric(defaults.unitValue);
     const description = String(get(row, "description") || defaults.description || "").trim();
@@ -99,7 +113,7 @@ export function mapRows(rows, mapping, defaults = {}) {
       service: String(get(row, "service") || defaults.service || "").toUpperCase().includes("SEDEX") ? "SEDEX" : "PAC",
       document: {
         recipient: {
-          documentType: doc.length === 14 ? "CNPJ" : "CPF", document: doc,
+          documentType, document: doc,
           name: String(get(row, "recipientName") || "").trim(), email: String(get(row, "email") || "").trim(),
           address: {
             street: String(get(row, "street") || "").trim(), number: String(get(row, "number") || "SN").trim(),

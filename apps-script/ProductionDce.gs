@@ -17,11 +17,11 @@ function buildProductionDceSource_(object) {
   const recipient = safeJsonParse_(object.RECIPIENT_JSON, {});
   const postal = safeJsonParse_(object.POSTAL_JSON, {});
   const address = recipient.address || {};
-  const document = digits_(recipient.document || recipient.cpfCnpj || postal.CPF_CNPJ || postal.CPF || postal.CNPJ);
+  const document = normalizeRecipientDocument_(recipient.document || recipient.cpfCnpj || postal.CPF_CNPJ || postal.CPF || postal.CNPJ || postal.DOCUMENTO, recipient.documentType || postal.TIPO_DOCUMENTO || postal.DOCUMENT_TYPE);
   const value = productionDceDeclaredValue_(postal);
   const content = String(object.CONTENT || postal.CONTEUDO || postal.content || '').trim();
   const issues = [];
-  if (!(isValidCpf_(document) || isValidCnpj_(document))) issues.push('CPF/CNPJ do destinatario invalido.');
+  if (!document.valid) issues.push('Documento do destinatario invalido.');
   if (!recipient.name && !postal.DESTINATARIO && !postal.NOME) issues.push('Destinatario obrigatorio.');
   const street = String(address.street || postal.ENDERECO || postal['ENDEREÇO'] || '').trim();
   const number = String(address.number || postal.NUMERO || '').trim();
@@ -46,8 +46,8 @@ function buildProductionDceSource_(object) {
       trackingCode: String(object.TRACKING_CODE),
       service: String(object.SERVICE),
       recipient: {
-        document: document,
-        documentType: document.length === 14 ? 'CNPJ' : 'CPF',
+        document: document.document,
+        documentType: document.documentType,
         name: String(recipient.name || postal.DESTINATARIO || postal.NOME || '').trim(),
         address: {
           street: street, number: number,

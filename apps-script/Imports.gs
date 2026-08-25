@@ -74,8 +74,8 @@ function normalizeImportedRemittance_(source) {
   if (!/^[A-Z]{2}\d{9}BR$/.test(trackingCode)) errors.push('Código SRO inválido.');
   if (['PAC', 'SEDEX'].indexOf(service) === -1) errors.push('Serviço deve ser PAC ou SEDEX.');
   if (!document.recipient || !String(document.recipient.name || '').trim()) errors.push('Destinatário obrigatório.');
-  const recipientDocument = digits_(document.recipient && document.recipient.document);
-  if (!(isValidCpf_(recipientDocument) || isValidCnpj_(recipientDocument))) errors.push('CPF/CNPJ do destinatário inválido.');
+  const recipientDocument = normalizeRecipientDocument_(document.recipient && document.recipient.document, document.recipient && document.recipient.documentType);
+  if (!recipientDocument.valid) errors.push('Documento do destinatário inválido.');
   if (!document.recipient || !document.recipient.address) errors.push('Endereço do destinatário obrigatório.');
   const address = document.recipient && document.recipient.address || {};
   if (!String(address.street || '').trim() || !String(address.number || '').trim() || !String(address.district || '').trim() || !String(address.city || '').trim()) errors.push('Endereço do destinatário incompleto.');
@@ -100,7 +100,7 @@ function normalizeImportedRemittance_(source) {
       reference: String(source.reference || trackingCode || ''),
       trackingCode: trackingCode,
       service: service,
-      recipient: Object.assign({}, document.recipient || {}, { document: recipientDocument, documentType: recipientDocument.length === 14 ? 'CNPJ' : 'CPF' }),
+      recipient: Object.assign({}, document.recipient || {}, { document: recipientDocument.document, documentType: recipientDocument.documentType }),
       items: Array.isArray(document.items) ? document.items : [],
       additionalInfo: String(document.additionalInfo || '')
     },

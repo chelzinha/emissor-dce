@@ -29,6 +29,20 @@ function isValidCpf_(value) {
   return digit(9) === Number(cpf.charAt(9)) && digit(10) === Number(cpf.charAt(10));
 }
 
+function isValidIdOutros_(value) {
+  return /^[\u0021-\u00FF]{2,60}$/.test(String(value || '').trim());
+}
+
+function normalizeRecipientDocument_(value, explicitType) {
+  const raw = String(value || '').trim();
+  const requested = String(explicitType || '').trim().toUpperCase();
+  let documentType = requested === 'CNPJ' ? 'CNPJ' : (requested === 'IDOUTROS' || requested === 'OUTRO' || requested === 'OUTROS' ? 'idOutros' : (requested === 'CPF' ? 'CPF' : ''));
+  if (!documentType) documentType = raw && !/^[\d./-]+$/.test(raw) ? 'idOutros' : (digits_(raw).length === 14 ? 'CNPJ' : 'CPF');
+  const document = documentType === 'idOutros' ? raw : digits_(raw);
+  const valid = documentType === 'CNPJ' ? isValidCnpj_(document) : (documentType === 'idOutros' ? isValidIdOutros_(document) : isValidCpf_(document));
+  return { documentType: documentType, document: document, valid: valid };
+}
+
 function validateCompany_(profile) {
   const errors = [];
   const source = profile || {};
