@@ -25,11 +25,11 @@ function configureReadyRow(row) {
   if (!simplified || !dce) return;
 
   simplified.disabled = false;
-  simplified.textContent = 'Gerar Declaração Simplificada';
+  setText(simplified, 'Gerar Declaração Simplificada');
   simplified.title = 'Cria o lote e libera a produção da etiqueta unificada com a Declaração Simplificada.';
 
   dce.disabled = false;
-  dce.textContent = 'Preparar lote para DC-e';
+  setText(dce, 'Preparar lote para DC-e');
   dce.title = 'Cria o lote fiscal para validação da agência e posterior autorização pelo cliente com o próprio e-CNPJ A1.';
 
   const actions = simplified.closest('.actions');
@@ -107,6 +107,14 @@ function applyDocumentModeFlow() {
   configureReturnActions(page);
 }
 
-const observer = new MutationObserver(() => queueMicrotask(applyDocumentModeFlow));
+let scheduled = false;
+const observer = new MutationObserver(() => {
+  if (scheduled) return;
+  scheduled = true;
+  requestAnimationFrame(() => {
+    scheduled = false;
+    applyDocumentModeFlow();
+  });
+});
 if (ROOT) observer.observe(ROOT, { childList: true, subtree: true });
 applyDocumentModeFlow();
