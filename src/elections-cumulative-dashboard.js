@@ -47,6 +47,28 @@ function accumulateOperations(rows) {
   return metrics;
 }
 
+function manualMetricsFromCampaign(campaign) {
+  const source = campaign?.profile?.manualMetrics || {};
+  const read = (key) => {
+    if (source[key] === "" || source[key] == null) return null;
+    const number = Number(source[key]);
+    return Number.isFinite(number) && number >= 0 ? number : null;
+  };
+  return {
+    addressReceived: read("addressReceived"),
+    addressCleaned: read("addressCleaned"),
+    updatedAt: String(source.updatedAt || ""),
+  };
+}
+
+function applyManualOverrides(autoMetrics, campaign) {
+  const metrics = { ...autoMetrics };
+  const manual = manualMetricsFromCampaign(campaign);
+  if (manual.addressReceived != null) metrics.addressReceived = manual.addressReceived;
+  if (manual.addressCleaned != null) metrics.addressCleaned = manual.addressCleaned;
+  return { metrics, manual };
+}
+
 function dailyOperationRows(rows) {
   const groups = new Map();
   const ensure = (date) => {
@@ -108,8 +130,10 @@ function formatNumber(value) {
 }
 
 function formatDate(value) {
-  const [year, month, day] = String(value || "").split("-");
-  return year && month && day ? `${day}/${month}/${year}` : String(value || "");
+  const text = String(value || "");
+  const date = text.slice(0, 10);
+  const [year, month, day] = date.split("-");
+  return year && month && day ? `${day}/${month}/${year}` : text;
 }
 
 function setText(node, value) {
@@ -122,6 +146,15 @@ function isDashboardVisible() {
 
 function campaignId() {
   return String(root?.querySelector("#campaign-select")?.value || "");
+}
+
+function notify(message, type = "info") {
+  const box = document.querySelector("#elections-toast");
+  if (!box) return;
+  box.textContent = message;
+  box.className = `elections-toast show ${type}`;
+  clearTimeout(box._manualMetricsTimer);
+  box._manualMetricsTimer = setTimeout(() => { box.className = "elections-toast"; }, 4200);
 }
 
 function metricByLabel(metrics, label) {
@@ -138,6 +171,12 @@ function metricByLabel(metrics, label) {
     "Entregues pelos Correios": metrics.delivered,
   };
   return values[label];
+}
+
+function manualMetricForLabel(manual, label) {
+  if (label === "Cadastros recebidos") return manual.addressReceived;
+  if (label === "Higienizados") return manual.addressCleaned;
+  return null;
 }
 
 function ensureExtraMetric(grid, label, key) {
@@ -193,7 +232,95 @@ function renderDailyDiary(section, operations) {
   if (diary.innerHTML !== markup) diary.innerHTML = markup;
 }
 
-function applyDashboard(metrics, operations, tracking) {
+function manualEditorMarkup(campaign, manual) {
+  const updated = manual.updatedAt ? `Última atualização: ${formatDate(manual.updatedAt)}` : "Ainda não atualizado manualmente";
+  return `<section class="manual-metrics-panel" data-manual-metrics-panel>
+    <div class="manual-metrics-copy">
+      <strong>Indicadores manuais</strong>
+      <span>Use estes campos para números que não vêm automaticamente dos lotes.</span>
+      <small>${updated}</small>
+    </div>
+    <form data-manual-metrics-form>
+      <label><span>Base recebida</span><input name="addressReceived" type="number" min="0" step="1" value="${manual.addressReceived ?? ""}" placeholder="Automático"></label>
+      <label><span>Higienizados</span><input name="addressCleaned" type="number" min="0" step="1" value="${manual.addressCleaned ?? ""}" placeholder="Automático"></label>
+      <button type="submit" class="primary">Salvar indicadores</button>
+    </form>
+    <button type="button" class="manual-metrics-toggle" data-manual-metrics-toggle aria-expanded="false">Atualizar indicadores manuais</button>
+  </section>`;
+}
+
+function ensureManualEditor(campaign, manual) {
+  const page = root?.querySelector(".page");
+  const head = page?.querySelector(":scope > .page-head");
+  if (!page || !head) return;
+  let panel = page.querySelector("[data-manual-metrics-panel]");
+  if (!panel) {
+    const holder = document.createElement("div");
+    holder.innerHTML = manualEditorMarkup(campaign, manual);
+    panel = holder.firstElementChild;
+    head.insertAdjacentElement("afterend", panel);
+
+    panel.querySelector("[data-manual-metrics-toggle]")?.addEventListener("click", (event) => {
+      const expanded = panel.classList.toggle("is-open");
+      event.currentTarget.setAttribute("aria-expanded", String(expanded));
+      event.currentTarget.textContent = expanded ? "Fechar edição" : "Atualizar indicadores manuais";
+    });
+
+    panel.querySelector("[data-manual-metrics-form]")?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const button = form.querySelector("button[type='submit']");
+      const values = Object.fromEntries(new FormData(form));
+      const parse = (value) => {
+        if (String(value).trim() === "") return null;
+        const number = Number(value);
+        if (!Number.isFinite(number) || number < 0) throw new Error("Informe valores inteiros iguais ou maiores que zero.");
+        return Math.round(number);
+      };
+
+      button.disabled = true;
+      button.textContent = "Salvando…";
+      try {
+        const addressReceived = parse(values.addressReceived);
+        const addressCleaned = parse(values.addressCleaned);
+        const profile = {
+          ...(campaign.profile || {}),
+          manualMetrics: {
+            addressReceived,
+            addressCleaned,
+            updatedAt: new Date().toISOString(),
+            source: "DASHBOARD_MANUAL",
+          },
+        };
+        const updatedCampaign = await dataAction("campaign.upsert", {
+          id: campaign.id,
+          name: campaign.name,
+          cnpj: campaign.cnpj,
+          candidateName: campaign.candidateName,
+          office: campaign.office,
+          status: campaign.status,
+          profile,
+        });
+        const id = campaignId();
+        const cached = cache.get(id);
+        if (cached) {
+          cached.campaign = updatedCampaign;
+          cache.set(id, cached);
+        }
+        panel.remove();
+        notify("Indicadores manuais atualizados.", "success");
+        scheduleRefresh();
+      } catch (error) {
+        notify(error.message, "error");
+      } finally {
+        button.disabled = false;
+        button.textContent = "Salvar indicadores";
+      }
+    });
+  }
+}
+
+function applyDashboard(autoMetrics, operations, tracking, campaign) {
   if (!isDashboardVisible()) return;
   applying = true;
   try {
@@ -202,10 +329,13 @@ function applyDashboard(metrics, operations, tracking) {
     setText(head?.querySelector("h1"), "Dashboard operacional");
     setText(head?.querySelector("p:not(.eyebrow)"), "Resumo consolidado de tudo que está registrado na base desta operação.");
 
+    const { metrics, manual } = applyManualOverrides(autoMetrics, campaign);
     const trackedPosted = Number(tracking?.total?.posted || 0);
     const trackedDelivered = Number(tracking?.total?.delivered || 0);
     metrics.posted = Math.max(metrics.posted, trackedPosted);
     metrics.delivered = Math.max(metrics.delivered, trackedDelivered);
+
+    ensureManualEditor(campaign, manual);
 
     const grid = root.querySelector(".grid.metrics");
     if (grid) {
@@ -215,7 +345,9 @@ function applyDashboard(metrics, operations, tracking) {
         const label = card.querySelector("span")?.textContent || "";
         const value = metricByLabel(metrics, label);
         if (value !== undefined) setText(card.querySelector("strong"), formatNumber(value));
-        setText(card.querySelector("small"), "Acumulado");
+        const manualValue = manualMetricForLabel(manual, label);
+        card.classList.toggle("is-manual", manualValue != null);
+        setText(card.querySelector("small"), manualValue != null ? "Informado manualmente" : "Acumulado automático");
       });
     }
 
@@ -273,16 +405,17 @@ async function refreshCumulativeDashboard() {
   if (!id) return;
 
   const cached = cache.get(id);
-  if (cached) applyDashboard(cached.metrics, cached.operations, cached.tracking);
+  if (cached) applyDashboard(cached.metrics, cached.operations, cached.tracking, cached.campaign);
 
   try {
-    const [operations, tracking] = await Promise.all([
+    const [operations, tracking, campaign] = await Promise.all([
       dataAction("operations.list", { campaignId: id }),
       dataAction("tracking.summary", { campaignId: id }).catch(() => null),
+      dataAction("campaign.get", { campaignId: id }),
     ]);
     const metrics = accumulateOperations(operations);
-    cache.set(id, { metrics, operations, tracking });
-    applyDashboard(metrics, operations, tracking);
+    cache.set(id, { metrics, operations, tracking, campaign });
+    applyDashboard(metrics, operations, tracking, campaign);
   } catch (error) {
     console.warn("Não foi possível consolidar o dashboard acumulado.", error);
   }
@@ -300,6 +433,7 @@ function scheduleRefresh() {
 root?.addEventListener("change", (event) => {
   if (event.target?.id === "campaign-select") {
     cache.delete(String(event.target.value || ""));
+    root.querySelector("[data-manual-metrics-panel]")?.remove();
     scheduleRefresh();
   }
 });
@@ -307,4 +441,4 @@ root?.addEventListener("change", (event) => {
 new MutationObserver(scheduleRefresh).observe(root, { childList: true, subtree: true });
 scheduleRefresh();
 
-export { accumulateOperations, dailyOperationRows };
+export { accumulateOperations, dailyOperationRows, applyManualOverrides };

@@ -22,7 +22,19 @@ test("diário agrupa a operação por dia em PAC, SEDEX e total", () => {
   assert.match(js, /TOTAL GERAL/);
 });
 
-test("diário tem apresentação responsiva e totalizador destacado", () => {
+test("dashboard aceita indicadores manuais sem substituir os dados automáticos", () => {
+  assert.match(js, /manualMetricsFromCampaign/);
+  assert.match(js, /applyManualOverrides/);
+  assert.match(js, /campaign\.get/);
+  assert.match(js, /campaign\.upsert/);
+  assert.match(js, /Base recebida/);
+  assert.match(js, /Higienizados/);
+  assert.match(js, /Informado manualmente/);
+});
+
+test("editor manual e diário têm apresentação responsiva", () => {
+  assert.match(css, /manual-metrics-panel/);
+  assert.match(css, /metric-card\.is-manual/);
   assert.match(css, /daily-diary-table/);
   assert.match(css, /tfoot/);
   assert.match(css, /@media\(max-width:760px\)/);
