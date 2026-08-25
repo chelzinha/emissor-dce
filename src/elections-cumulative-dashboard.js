@@ -1,3 +1,4 @@
+import "./elections-cumulative-dashboard.css";
 import { dataAction } from "./api.js";
 
 const root = document.querySelector("#elections-app");
@@ -46,8 +47,69 @@ function accumulateOperations(rows) {
   return metrics;
 }
 
+function dailyOperationRows(rows) {
+  const groups = new Map();
+  const ensure = (date) => {
+    if (!groups.has(date)) {
+      groups.set(date, {
+        date,
+        generated: { pac: 0, sedex: 0 },
+        posted: { pac: 0, sedex: 0, hasBreakdown: false },
+      });
+    }
+    return groups.get(date);
+  };
+
+  (Array.isArray(rows) ? rows : []).forEach((row) => {
+    const date = String(row.occurredAt || row.createdAt || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+
+    const quantity = Number(row.quantity || 0);
+    const type = String(row.type || "").toUpperCase();
+    const service = String(row.service || "").toUpperCase();
+    const metadata = row.metadata || {};
+    const group = ensure(date);
+
+    if (type === "LABEL_GENERATED") {
+      if (service === "PAC") group.generated.pac += quantity;
+      if (service === "SEDEX") group.generated.sedex += quantity;
+    }
+
+    if (type === "POSTING_COMPLETED") {
+      const metaPac = Number(metadata.pac || metadata.labelsPac || 0);
+      const metaSedex = Number(metadata.sedex || metadata.labelsSedex || 0);
+      if (metaPac || metaSedex) {
+        group.posted.pac += metaPac;
+        group.posted.sedex += metaSedex;
+        group.posted.hasBreakdown = true;
+      } else if (service === "PAC") {
+        group.posted.pac += quantity;
+        group.posted.hasBreakdown = true;
+      } else if (service === "SEDEX") {
+        group.posted.sedex += quantity;
+        group.posted.hasBreakdown = true;
+      }
+    }
+  });
+
+  return [...groups.values()]
+    .map((group) => {
+      const source = group.posted.hasBreakdown ? group.posted : group.generated;
+      const pac = Number(source.pac || 0);
+      const sedex = Number(source.sedex || 0);
+      return { date: group.date, pac, sedex, total: pac + sedex };
+    })
+    .filter((row) => row.total > 0)
+    .sort((a, b) => b.date.localeCompare(a.date));
+}
+
 function formatNumber(value) {
   return new Intl.NumberFormat("pt-BR").format(Number(value || 0));
+}
+
+function formatDate(value) {
+  const [year, month, day] = String(value || "").split("-");
+  return year && month && day ? `${day}/${month}/${year}` : String(value || "");
 }
 
 function setText(node, value) {
@@ -101,6 +163,36 @@ function ensurePostedProgress(section) {
   return row;
 }
 
+function renderDailyDiary(section, operations) {
+  if (!section) return;
+  setText(section.querySelector("h2"), "Diário da operação");
+  setText(section.querySelector(".section-title p"), "Produção diária consolidada por serviço.");
+
+  const rows = dailyOperationRows(operations);
+  const totals = rows.reduce((sum, row) => ({
+    pac: sum.pac + row.pac,
+    sedex: sum.sedex + row.sedex,
+    total: sum.total + row.total,
+  }), { pac: 0, sedex: 0, total: 0 });
+
+  const markup = rows.length
+    ? `<div class="daily-diary-table-wrap"><table class="daily-diary-table" aria-label="Diário acumulado da operação">
+        <thead><tr><th>Data</th><th>PAC</th><th>SEDEX</th><th>Total</th></tr></thead>
+        <tbody>${rows.map((row) => `<tr><td>${formatDate(row.date)}</td><td>${formatNumber(row.pac)}</td><td>${formatNumber(row.sedex)}</td><td><strong>${formatNumber(row.total)}</strong></td></tr>`).join("")}</tbody>
+        <tfoot><tr><th>TOTAL GERAL</th><th>${formatNumber(totals.pac)}</th><th>${formatNumber(totals.sedex)}</th><th>${formatNumber(totals.total)}</th></tr></tfoot>
+      </table></div>`
+    : '<div class="empty">Nenhum quantitativo diário registrado.</div>';
+
+  let diary = section.querySelector("[data-daily-diary]");
+  if (!diary) {
+    section.querySelector(".timeline")?.remove();
+    diary = document.createElement("div");
+    diary.dataset.dailyDiary = "true";
+    section.appendChild(diary);
+  }
+  if (diary.innerHTML !== markup) diary.innerHTML = markup;
+}
+
 function applyDashboard(metrics, operations, tracking) {
   if (!isDashboardVisible()) return;
   applying = true;
@@ -152,11 +244,7 @@ function applyDashboard(metrics, operations, tracking) {
       });
     }
 
-    const timeline = sections[1];
-    if (timeline) {
-      setText(timeline.querySelector("h2"), "Histórico recente");
-      setText(timeline.querySelector(".section-title p"), "Últimos eventos registrados em toda a operação.");
-    }
+    renderDailyDiary(sections[1], operations);
 
     const dates = (Array.isArray(operations) ? operations : [])
       .map((item) => String(item.occurredAt || "").slice(0, 10))
@@ -167,13 +255,11 @@ function applyDashboard(metrics, operations, tracking) {
       if (!period) {
         period = document.createElement("small");
         period.dataset.cumulativePeriod = "true";
-        period.style.display = "block";
-        period.style.marginTop = "8px";
-        period.style.color = "#64748b";
+        period.className = "cumulative-period";
         head.querySelector("div")?.appendChild(period);
       }
-      const from = dates[0].split("-").reverse().join("/");
-      const to = dates[dates.length - 1].split("-").reverse().join("/");
+      const from = formatDate(dates[0]);
+      const to = formatDate(dates[dates.length - 1]);
       setText(period, from === to ? `Dados acumulados em ${from}` : `Período acumulado: ${from} a ${to}`);
     }
   } finally {
@@ -221,4 +307,4 @@ root?.addEventListener("change", (event) => {
 new MutationObserver(scheduleRefresh).observe(root, { childList: true, subtree: true });
 scheduleRefresh();
 
-export { accumulateOperations };
+export { accumulateOperations, dailyOperationRows };
