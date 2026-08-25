@@ -9,14 +9,15 @@ const clientHtml = fs.readFileSync(new URL('../portal.html', import.meta.url), '
 
 test('retorno pronto oferece as duas modalidades documentais', () => {
   assert.match(modeFlow, /Gerar Declaração Simplificada/);
-  assert.match(modeFlow, /Preparar lote para DC-e/);
+  assert.match(modeFlow, /Gerar DC-e/);
   assert.match(modeFlow, /Escolha uma única modalidade/);
   assert.match(modeFlow, /status === 'READY'/);
+  assert.match(modeFlow, /etapa 6/);
 });
 
 test('retorno em produção oferece continuação em vez de nova criação', () => {
   assert.match(modeFlow, /status === 'IN_PRODUCTION'/);
-  assert.match(modeFlow, /Continuar na Produção/);
+  assert.match(modeFlow, /Continuar no fluxo/);
   assert.match(modeFlow, /dataset\.documentModeState/);
   assert.match(modeFlow, /continueToProduction/);
 });
