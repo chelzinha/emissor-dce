@@ -9,8 +9,8 @@ import { isLabelSetupComplete } from './label-setup.js';
 const ROOT = document.querySelector('#elections-app');
 
 function h(value) {
-  return String(value ?? '').replace(/[&<>'"]/g, (char) => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+  return String(value ?? '').replace(/[&<>'\"]/g, (char) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '\"': '&quot;'
   }[char]));
 }
 
@@ -40,23 +40,61 @@ function gateBox(label, ok, text) {
   return `<div class="production-gate ${ok ? 'ok' : 'warn'}"><span>${h(label)}</span><strong>${h(text)}</strong></div>`;
 }
 
+function labelsReady(gates) {
+  return String(gates?.status || '') === 'READY_FOR_UNIFIED_LABEL';
+}
+
+function documentGateText(gates) {
+  const mode = String(gates?.documentMode || '');
+  const status = String(gates?.status || '');
+  if (status === 'READY_FOR_UNIFIED_LABEL') {
+    return mode === 'DCE_AUTHORIZED' ? 'DC-e autorizada e liberada' : 'Declaração Simplificada liberada';
+  }
+  if (mode !== 'DCE_AUTHORIZED') return 'Aguardando liberação documental';
+  const labels = {
+    AWAITING_DCE_PREPARATION: 'Aguardando validação fiscal da agência',
+    DCE_PREPARED: 'Lote DC-e preparado; autorização do cliente pendente',
+    DCE_RESERVED: 'Autorização fiscal iniciada',
+    DCE_PARTIAL: 'Autorização fiscal parcial',
+  };
+  return labels[status] || 'DC-e ainda não liberada para produção';
+}
+
+function overallStatus(gates) {
+  if (gates.handedOff) return ['ok', 'ENTREGUE À OPERAÇÃO'];
+  if (gates.printComplete) return ['warn', 'IMPRESSÃO COMPLETA'];
+  if (!labelsReady(gates)) return ['warn', 'AGUARDANDO DOCUMENTO'];
+  return ['', 'EM PREPARAÇÃO'];
+}
+
 function gateMarkup(gates, setupReady) {
-  return `<div class="production-ops-title"><strong>Gates de produção</strong><span class="status ${gates.handedOff ? 'ok' : gates.printComplete ? 'warn' : ''}">${gates.handedOff ? 'ENTREGUE À OPERAÇÃO' : gates.printComplete ? 'IMPRESSÃO COMPLETA' : 'EM PREPARAÇÃO'}</span></div>
+  const ready = labelsReady(gates);
+  const [statusClass, statusLabel] = overallStatus(gates);
+  const actions = [];
+  if (!setupReady) actions.push('<button type="button" class="secondary" data-op="setup">Configurar Data Matrix e chancela</button>');
+  if (ready && setupReady && !gates.matrixVerified) actions.push('<button type="button" class="secondary" data-op="matrix">Conferir 100% Data Matrix</button>');
+  if (ready && setupReady && gates.matrixVerified && !gates.labelTestApproved) actions.push('<button type="button" class="secondary" data-op="test">Validar etiqueta teste</button>');
+  if (ready && gates.labelTestApproved && !gates.printComplete) actions.push('<button type="button" class="secondary" data-op="print">Confirmar impressão</button>');
+
+  const message = !ready
+    ? 'As etapas de Data Matrix, etiqueta teste e impressão permanecem bloqueadas até o documento do lote estar liberado.'
+    : gates.printComplete && !gates.handedOff
+      ? 'Impressão integral concluída. Continue na etapa 9 - Entrega à operação para vincular e entregar os volumes.'
+      : gates.handedOff
+        ? 'Entrega à operação já registrada para este lote.'
+        : '';
+
+  return `<div class="production-ops-title"><strong>Gates de produção</strong><span class="status ${statusClass}">${statusLabel}</span></div>
     <div class="production-ops-grid">
+      ${gateBox('Documento do lote', ready, documentGateText(gates))}
       ${gateBox('Modelo da etiqueta', setupReady, setupReady ? 'Data Matrix + chancela configurados' : 'Configuração pendente')}
-      ${gateBox('Data Matrix 100%', gates.matrixVerified, gates.matrixVerified ? 'Confirmado' : 'Pendente')}
-      ${gateBox('Etiqueta teste', gates.labelTestApproved, gates.labelTestApproved ? 'SRO validado' : `Pendente · ${gates.testTrackingCode || '—'}`)}
-      ${gateBox('Impressão', gates.printComplete, gates.printComplete ? `${gates.printed}/${gates.total}` : `${gates.printed}/${gates.total} · faltam ${gates.printRemaining}`)}
-      ${gateBox('Entrega interna', gates.handedOff, gates.handedOff ? `Recebido por ${gates.receivedBy || 'confirmado'}` : 'Pendente')}
+      ${gateBox('Data Matrix 100%', gates.matrixVerified, gates.matrixVerified ? 'Confirmado' : ready ? 'Pendente' : 'Bloqueado até liberação documental')}
+      ${gateBox('Etiqueta teste', gates.labelTestApproved, gates.labelTestApproved ? 'SRO validado' : ready ? `Pendente · ${gates.testTrackingCode || '—'}` : 'Bloqueada até liberação documental')}
+      ${gateBox('Impressão', gates.printComplete, gates.printComplete ? `${gates.printed}/${gates.total}` : ready ? `${gates.printed}/${gates.total} · faltam ${gates.printRemaining}` : 'Bloqueada até liberação documental')}
+      ${gateBox('Entrega à operação', gates.handedOff, gates.handedOff ? `Recebido por ${gates.receivedBy || 'confirmado'}` : gates.printComplete ? 'Disponível na etapa 9' : 'Pendente')}
     </div>
-    <div class="production-ops-actions">
-      ${!setupReady ? '<button type="button" class="secondary" data-op="setup">Configurar Data Matrix e chancela</button>' : !gates.matrixVerified ? '<button type="button" class="secondary" data-op="matrix">Conferir 100% Data Matrix</button>' : ''}
-      ${setupReady && gates.matrixVerified && !gates.labelTestApproved ? '<button type="button" class="secondary" data-op="test">Validar etiqueta teste</button>' : ''}
-      ${gates.labelTestApproved && !gates.printComplete ? '<button type="button" class="secondary" data-op="print">Confirmar impressão</button>' : ''}
-      ${gates.printComplete && !gates.handedOff ? '<button type="button" class="secondary" data-op="handoff">Confirmar entrega interna</button>' : ''}
-      ${gates.handedOff ? '<button type="button" class="ghost" data-op="protocol">Validar protocolo de postagem</button>' : ''}
-    </div>
-    <div class="production-ops-message"></div>`;
+    <div class="production-ops-actions">${actions.join('')}</div>
+    <div class="production-ops-message${message ? ' production-ops-progress' : ''}">${h(message)}</div>`;
 }
 
 async function batchInfo(batchId) {
@@ -213,35 +251,6 @@ async function confirmPrint(batchId, gates) {
   notify(`${quantity.toLocaleString('pt-BR')} etiquetas registradas como impressas.`, 'success');
 }
 
-async function confirmHandoff(batchId) {
-  const receivedBy = window.prompt('Nome de quem recebeu fisicamente os volumes de etiquetas:', '');
-  if (receivedBy == null) return;
-  const deliveredBy = window.prompt('Responsável pela entrega (opcional):', '') || '';
-  await dataAction('production.handoff.confirm', {
-    campaignId: campaignId(),
-    productionBatchId: batchId,
-    receivedBy,
-    deliveredBy,
-  });
-  notify('Entrega interna dos volumes confirmada.', 'success');
-}
-
-async function validateProtocol(card, batchId) {
-  const message = card.querySelector('.production-ops-message');
-  const data = await dataAction('production.protocol.data', {
-    campaignId: campaignId(),
-    productionBatchId: batchId,
-  });
-  if (!data.ready) {
-    message.className = 'production-ops-message production-ops-error';
-    message.innerHTML = `O protocolo ainda não pode ser gerado: ${data.errors.slice(0, 8).map(h).join('<br>')}${data.errors.length > 8 ? `<br>+ ${data.errors.length - 8} pendências` : ''}`;
-    return;
-  }
-  message.className = 'production-ops-message production-ops-progress';
-  message.textContent = `Dados validados: ${data.total.toLocaleString('pt-BR')} objetos em ${data.lists.length} lista(s) postal(is) real(is).`;
-  notify('Dados do protocolo de postagem validados no backend.', 'success');
-}
-
 async function runAction(card, batchId, action, gates) {
   const buttons = [...card.querySelectorAll('.production-ops-actions button')];
   buttons.forEach((button) => { button.disabled = true; });
@@ -250,9 +259,7 @@ async function runAction(card, batchId, action, gates) {
     if (action === 'matrix') await verifyMatrix(card, batchId);
     if (action === 'test') await approveTest(batchId);
     if (action === 'print') await confirmPrint(batchId, gates);
-    if (action === 'handoff') await confirmHandoff(batchId);
-    if (action === 'protocol') await validateProtocol(card, batchId);
-    if (action !== 'protocol') await loadGates(card, batchId);
+    await loadGates(card, batchId);
   } catch (error) {
     const message = card.querySelector('.production-ops-message');
     if (message) {

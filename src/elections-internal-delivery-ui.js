@@ -2,6 +2,7 @@ import './elections-internal-delivery-ui.css';
 import { dataAction } from './api.js';
 
 const ROOT = document.querySelector('#elections-app');
+const STAGE_KEY = 'AGF_OPERATION_STAGE_FULL_1_11';
 let renderToken = 0;
 let deliveryGeneratorPromise;
 
@@ -10,7 +11,7 @@ function loadDeliveryGenerator() {
   return deliveryGeneratorPromise;
 }
 
-function h(value) { return String(value ?? '').replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char])); }
+function h(value) { return String(value ?? '').replace(/[&<>'\"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '\"': '&quot;' }[char])); }
 function fmt(value) { return new Intl.NumberFormat('pt-BR').format(Number(value || 0)); }
 function cid() { return document.querySelector('#campaign-select')?.value || ''; }
 function today() { return new Date().toISOString().slice(0, 10); }
@@ -24,7 +25,13 @@ function notify(message, type = 'info') {
   clearTimeout(box._internalDeliveryTimer);
   box._internalDeliveryTimer = setTimeout(() => { box.className = 'elections-toast'; }, 4800);
 }
-function isStageEight() { return String(ROOT?.dataset.operationStage || sessionStorage.getItem('AGF_OPERATION_STAGE_1_8') || '') === '8'; }
+function currentStage() {
+  const datasetStage = String(ROOT?.dataset.operationStage || '');
+  if (datasetStage) return datasetStage;
+  try { return String(sessionStorage.getItem(STAGE_KEY) || ''); }
+  catch { return ''; }
+}
+function isStageNine() { return currentStage() === '9'; }
 function modeLabel(value) { return String(value || '') === 'DCE_AUTHORIZED' ? 'DC-e autorizada' : 'Declaração Simplificada'; }
 
 async function saveProfile(campaign, profile) {
@@ -158,7 +165,7 @@ async function confirmPlan(panel, campaign, plan) {
 async function renderPanel(panel, campaignOverride = null) {
   const token = ++renderToken;
   const campaignId = cid();
-  panel.hidden = !isStageEight();
+  panel.hidden = !isStageNine();
   if (panel.hidden || !campaignId) return;
   panel.innerHTML = '<div class="internal-delivery-loading">Carregando lotes prontos para entrega…</div>';
   try {
@@ -170,7 +177,7 @@ async function renderPanel(panel, campaignOverride = null) {
     const activePlan = latestPlanned(campaign);
     const eligible = activePlan ? [] : await eligibleBatches(batches);
     if (token !== renderToken) return;
-    panel.innerHTML = `<div class="internal-delivery-head"><div><p class="eyebrow">ETAPA 8</p><h2>Entrega à operação</h2><p>Selecione os lotes que serão entregues juntos, escolha a data e só então gere as etiquetas de controle dos volumes.</p></div></div>${activePlan ? planMarkup(activePlan) : selectorMarkup(eligible)}${historyMarkup(campaign)}`;
+    panel.innerHTML = `<div class="internal-delivery-head"><div><p class="eyebrow">ETAPA 9</p><h2>Entrega à operação</h2><p>Selecione os lotes que serão entregues juntos, escolha a data e só então gere as etiquetas de controle dos volumes.</p></div></div>${activePlan ? planMarkup(activePlan) : selectorMarkup(eligible)}${historyMarkup(campaign)}`;
     if (activePlan) {
       panel.querySelector('[data-download-volume-labels]')?.addEventListener('click', async () => {
         const { generateInternalDeliveryVolumeLabels } = await loadDeliveryGenerator();
@@ -199,12 +206,11 @@ function mount() {
     panel = document.createElement('section');
     panel.id = 'internal-delivery-panel';
     panel.className = 'card internal-delivery-panel';
-    // A timeline antiga (.approved-process) foi removida; a atual e .workflow-8-process.
     const process = page.querySelector(':scope > .workflow-8-process');
     if (process) process.insertAdjacentElement('afterend', panel);
     else page.querySelector(':scope > .page-head')?.insertAdjacentElement('afterend', panel);
   }
-  const shouldShow = isStageEight();
+  const shouldShow = isStageNine();
   panel.hidden = !shouldShow;
   if (shouldShow && (!panel.dataset.loaded || !panel.childElementCount)) {
     panel.dataset.loaded = '1';
