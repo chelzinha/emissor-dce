@@ -30,7 +30,8 @@ test('painel da agência carrega validação DC-e e não carrega a antiga oculta
   assert.match(dceFlow, /Abrir Portal do Cliente/);
 });
 
-test('portal do usuário final mantém login próprio e autorização DC-e visível', () => {
-  assert.match(clientHtml, /client-portal\.js/);
-  assert.doesNotMatch(clientHtml, /client-release-simplified\.js/);
+test('link do usuário final aponta temporariamente para validação pública de CNPJ', () => {
+  assert.match(clientHtml, /client-cnpj-temp\.js/);
+  assert.doesNotMatch(clientHtml, /client-portal\.js/);
+  assert.doesNotMatch(clientHtml, /client-postal-simulator\.js/);
 });
