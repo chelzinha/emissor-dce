@@ -39,7 +39,10 @@ function statusOf(card) {
 function dceCards() {
   return [...(ROOT?.querySelectorAll(".page .card") || [])].filter((card) => {
     const heading = card.querySelector("h2")?.textContent || "";
-    const mode = [...card.querySelectorAll(".matrix-box")].find((box) => box.querySelector("span")?.textContent?.trim() === "Documento" || box.querySelector("span")?.textContent?.trim() === "Modo");
+    const mode = [...card.querySelectorAll(".matrix-box")].find((box) => {
+      const label = box.querySelector("span")?.textContent?.trim();
+      return label === "Documento" || label === "Modo";
+    });
     const modeText = mode?.querySelector("strong")?.textContent || "";
     return card.querySelector("[data-volumes]") && (/DC-e/i.test(heading) || /DC-e/i.test(modeText));
   });
@@ -86,11 +89,15 @@ async function prepare(card, batchId, button) {
   }
 }
 
-function addClientPortalAccess(actions, batchId, message, className = "") {
-  if (!actions || actions.querySelector(`[data-dce-client-access="${CSS.escape(batchId)}"]`)) return;
+function ensureClientPortalAccess(actions, batchId, status, message, className = "") {
+  if (!actions) return;
+  const existing = actions.querySelector(`[data-dce-client-access="${CSS.escape(batchId)}"]`);
+  if (existing?.dataset.dceState === status) return;
+  existing?.remove();
   const wrapper = document.createElement("div");
   wrapper.className = `dce-client-access ${className}`.trim();
   wrapper.dataset.dceClientAccess = batchId;
+  wrapper.dataset.dceState = status;
   wrapper.innerHTML = `<span>${h(message)}</span>${portalLinkMarkup("secondary")}`;
   actions.appendChild(wrapper);
 }
@@ -102,10 +109,12 @@ function decorate() {
     if (!batchId) return;
     const status = statusOf(card);
     const actions = volumeButton.closest(".actions") || card;
-
-    card.querySelectorAll("[data-dce-preflight], [data-dce-client-access]").forEach((node) => node.remove());
+    const preflight = actions.querySelector(`[data-dce-preflight="${CSS.escape(batchId)}"]`);
+    const access = actions.querySelector(`[data-dce-client-access="${CSS.escape(batchId)}"]`);
 
     if (status === "AWAITING_DCE_PREPARATION") {
+      access?.remove();
+      if (preflight) return;
       const button = document.createElement("button");
       button.type = "button";
       button.className = "primary";
@@ -117,27 +126,40 @@ function decorate() {
       return;
     }
 
+    preflight?.remove();
+
     if (status === "DCE_PREPARED") {
-      addClientPortalAccess(actions, batchId, "Lote aguardando autorização do cliente com e-CNPJ A1.", "warn");
+      ensureClientPortalAccess(actions, batchId, status, "Lote aguardando autorização do cliente com e-CNPJ A1.", "warn");
       return;
     }
 
     if (status === "DCE_RESERVED") {
-      addClientPortalAccess(actions, batchId, "Autorização fiscal iniciada pelo cliente. Ele pode continuar pelo Portal.", "info");
+      ensureClientPortalAccess(actions, batchId, status, "Autorização fiscal iniciada pelo cliente. Ele pode continuar pelo Portal.", "info");
       return;
     }
 
     if (status === "DCE_PARTIAL") {
-      addClientPortalAccess(actions, batchId, "Autorização parcial. O cliente deve abrir o Portal para concluir ou revisar rejeições.", "warn");
+      ensureClientPortalAccess(actions, batchId, status, "Autorização parcial. O cliente deve abrir o Portal para concluir ou revisar rejeições.", "warn");
       return;
     }
 
     if (status === "READY_FOR_UNIFIED_LABEL") {
-      addClientPortalAccess(actions, batchId, "DC-e autorizada. O lote retornou ao fluxo de impressão.", "ok");
+      ensureClientPortalAccess(actions, batchId, status, "DC-e autorizada. O lote retornou ao fluxo de impressão.", "ok");
+      return;
     }
+
+    access?.remove();
   });
 }
 
-const observer = new MutationObserver(() => queueMicrotask(decorate));
+let scheduled = false;
+const observer = new MutationObserver(() => {
+  if (scheduled) return;
+  scheduled = true;
+  requestAnimationFrame(() => {
+    scheduled = false;
+    decorate();
+  });
+});
 if (ROOT) observer.observe(ROOT, { childList: true, subtree: true });
 decorate();
