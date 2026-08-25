@@ -5,7 +5,7 @@ function setText(node, value) {
 }
 
 function continueToProduction() {
-  ROOT?.querySelector('.app-nav button.source-nav-button[data-view="production"], .app-nav button[data-view="production"]')?.click();
+  ROOT?.querySelector('.app-nav button[data-view="production"]')?.click();
 }
 
 function normalizeStatus(row) {
@@ -26,18 +26,18 @@ function configureReadyRow(row) {
 
   simplified.disabled = false;
   setText(simplified, 'Gerar Declaração Simplificada');
-  simplified.title = 'Cria o lote e libera a produção da etiqueta unificada com a Declaração Simplificada.';
+  simplified.title = 'Cria o lote e segue diretamente para a produção da etiqueta unificada com Declaração Simplificada.';
 
   dce.disabled = false;
-  setText(dce, 'Preparar lote para DC-e');
-  dce.title = 'Cria o lote fiscal para validação da agência e posterior autorização pelo cliente com o próprio e-CNPJ A1.';
+  setText(dce, 'Gerar DC-e');
+  dce.title = 'Cria o lote DC-e, valida os dados fiscais na agência e depois libera a autorização do cliente com e-CNPJ A1.';
 
   const actions = simplified.closest('.actions');
   if (actions && !actions.querySelector('[data-document-mode-question]')) {
     const question = document.createElement('small');
     question.dataset.documentModeQuestion = 'true';
     question.className = 'document-mode-question';
-    question.textContent = 'Escolha uma única modalidade para este retorno.';
+    question.textContent = 'Escolha uma única modalidade. Depois da criação do lote, essa escolha não pode ser alterada.';
     actions.appendChild(question);
   }
 }
@@ -51,8 +51,8 @@ function configureInProductionRow(row) {
   button.type = 'button';
   button.className = 'secondary';
   button.dataset.documentModeContinue = 'true';
-  button.textContent = 'Continuar na Produção';
-  button.title = 'A modalidade já foi escolhida para este retorno. Continue para impressão, entrega à operação, acompanhamento e relatórios.';
+  button.textContent = 'Continuar no fluxo';
+  button.title = 'A modalidade já foi escolhida. Continue para produção, impressão, entrega à operação, acompanhamento e relatórios.';
   button.addEventListener('click', continueToProduction);
 
   actions.replaceChildren(button);
@@ -68,14 +68,19 @@ function configureBlockedRow(row) {
   }
 }
 
+function processedSection(page) {
+  const heading = [...(page?.querySelectorAll('h2') || [])]
+    .find((node) => node.textContent?.trim() === 'Retornos já processados');
+  return heading?.closest('.card') || null;
+}
+
 function configureReturnActions(page) {
   if (!page) return;
-  const sectionHeading = [...page.querySelectorAll('h2')]
-    .find((node) => node.textContent?.trim() === 'Retornos já processados');
-  const section = sectionHeading?.closest('.card');
-  const subtitle = sectionHeading?.parentElement?.querySelector('p');
+  const section = processedSection(page);
+  const heading = section?.querySelector('h2');
+  const subtitle = heading?.parentElement?.querySelector('p');
 
-  setText(subtitle, 'Quando o retorno estiver pronto, escolha Declaração Simplificada ou DC-e. A modalidade fica vinculada ao lote e não pode ser trocada depois da criação.');
+  setText(subtitle, 'Retornos com status Pronto aguardam a escolha entre Declaração Simplificada e DC-e. Essa escolha é a etapa 6 do fluxo.');
 
   section?.querySelectorAll('tbody tr').forEach((row) => {
     const status = normalizeStatus(row);
@@ -87,21 +92,19 @@ function configureReturnActions(page) {
 
 function applyDocumentModeFlow() {
   if (!ROOT) return;
-
-  const returnHeading = [...ROOT.querySelectorAll('h1')]
-    .find((node) => node.textContent?.trim() === 'PDF + CSV das postagens');
-  const page = returnHeading?.closest('.page');
-  if (!page) return;
+  const sectionHeading = [...ROOT.querySelectorAll('h2')]
+    .find((node) => node.textContent?.trim() === 'Retornos já processados');
+  const page = sectionHeading?.closest('.page');
+  const section = sectionHeading?.closest('.card');
+  if (!page || !section) return;
 
   if (!page.querySelector('[data-document-mode-note]')) {
     const note = document.createElement('div');
-    note.className = 'notice';
+    note.className = 'notice document-mode-note';
     note.dataset.documentModeNote = 'true';
     note.style.marginBottom = '16px';
-    note.innerHTML = '<strong>Qual documento será usado neste lote?</strong><p>Escolha <b>Declaração Simplificada</b> para seguir diretamente à produção, ou <b>DC-e</b> para validar os dados fiscais, liberar o lote ao cliente e aguardar a autorização com o e-CNPJ A1 antes da impressão.</p>';
-    const firstCard = page.querySelector(':scope > .card');
-    if (firstCard) page.insertBefore(note, firstCard);
-    else page.appendChild(note);
+    note.innerHTML = '<strong>Qual documento será usado neste lote?</strong><p>Esta é a <b>etapa 6</b>. Escolha <b>Declaração Simplificada</b> para seguir diretamente à produção, ou <b>DC-e</b> para validar o lote na agência, liberar a autorização ao usuário final e aguardar a assinatura com o e-CNPJ A1 antes da impressão.</p>';
+    section.insertAdjacentElement('beforebegin', note);
   }
 
   configureReturnActions(page);
