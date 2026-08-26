@@ -23,6 +23,7 @@ test('etapas 10 e 11 e botão financeiro usam a navegação dinâmica estável',
   assert.match(navigation, /11:\s*'reports'/);
   assert.match(navigation, /finance:\s*'\.finance-page'/);
   assert.match(navigation, /agf:navigate-view/);
+  assert.match(navigation, /nativeViewButton\(view\)\?\.click\(\)/);
   assert.match(financeNav, /data-operation-view/);
   assert.match(financeNav, /Financeiro/);
 });
