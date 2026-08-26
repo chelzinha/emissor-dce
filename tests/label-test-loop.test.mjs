@@ -11,21 +11,21 @@ const html = fs.readFileSync(new URL('../eleicoes.html', import.meta.url), 'utf8
 test('geração busca apenas Data Matrix dos SROs necessários', () => {
   assert.match(matrix, /targetTrackingCodes/);
   assert.match(matrix, /targeted && !targetOnPage/);
-  assert.match(generator, /matrixCrops(portalReturnId, trackingCodes, onProgress)/);
+  assert.match(generator, /matrixCrops\(portalReturnId, trackingCodes, onProgress\)/);
   assert.match(generator, /targetTrackingCodes: targets/);
-  assert.match(generator, /targets.join("\|")/);
+  assert.match(generator, /targets\.join\("\\|"\)/);
 });
 
 test('restauração de sessão encerra o observer após uma única recuperação', () => {
   assert.match(resume, /function finishRestore/);
-  assert.match(resume, /observer?.disconnect()/);
+  assert.match(resume, /observer\?\.disconnect\(\)/);
   assert.match(resume, /function restoreOnce/);
 });
 
 test('etiqueta teste usa modal estável e mantém etapa de produção', () => {
   assert.match(stability, /data-op="test"/);
   assert.match(stability, /askTrackingCode/);
-  assert.match(stability, /sessionStorage.removeItem(RESUME_KEY)/);
-  assert.doesNotMatch(stability, /location.reload/);
-  assert.match(html, /elections-label-test-stability.js/);
+  assert.match(stability, /sessionStorage\.removeItem\(RESUME_KEY\)/);
+  assert.doesNotMatch(stability, /location\.reload/);
+  assert.match(html, /elections-label-test-stability\.js/);
 });

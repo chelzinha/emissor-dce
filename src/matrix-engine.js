@@ -156,7 +156,10 @@ export async function auditPdfDocuments(pdfDocuments, ZXing, options = {}) {
       try {
         const textContent = await page.getTextContent();
         const pageText = textContent.items.map((entry) => entry.str).join(" ").toUpperCase();
-        const textCodes = trackingCodesFromText(pageText);
+        const textCodes = [...new Set([
+          ...trackingCodesFromText(pageText),
+          ...trackingCodesFromText(pageText.replace(/\s/g, "")),
+        ])];
         const stripe = stripeFromTextContent(textContent, page.getViewport({ scale: 1 })) || "";
         const targetOnPage = !targeted || textCodes.some((code) => targetCodes.has(code));
 
@@ -192,8 +195,8 @@ export async function auditPdfDocuments(pdfDocuments, ZXing, options = {}) {
           }
           if (seenObjects.has(object)) diagnostics.duplicates.push({ object, fileName: item.name, page: pageNumber });
           seenObjects.add(object);
-          if (keepCrops && (!targeted || targetCodes.has(object))) {
-            crops.set(object, selectedCrop.toDataURL("image/png"));
+          if (!targeted || targetCodes.has(object)) {
+            if (keepCrops) crops.set(object, selectedCrop.toDataURL("image/png"));
           }
           audit.push({
             fileName: item.name,

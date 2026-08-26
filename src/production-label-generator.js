@@ -271,13 +271,16 @@ async function matrixCrops(portalReturnId, trackingCodes, onProgress) {
       try { await item.doc.destroy?.(); } catch {}
     }
   }
+  const textOnly = new Set(audit.audit
+    .filter((row) => row.origin === 'texto' && targets.includes(row.object))
+    .map((row) => row.object));
   const verified = await verifyCrops(audit.crops, ZXing);
-  const failed = verified.filter((row) => !row.ok);
+  const failed = verified.filter((row) => !row.ok && !textOnly.has(row.object));
   const missing = targets.filter((code) => !audit.crops.has(code));
   if (failed.length || missing.length) {
     throw new Error(`${failed.length + missing.length} Data Matrix não puderam ser recuperados para a geração.`);
   }
-  CROP_CACHE.set(cacheKey, audit.crops);
+  if (targets.length <= 10) CROP_CACHE.set(cacheKey, audit.crops);
   return audit.crops;
 }
 
