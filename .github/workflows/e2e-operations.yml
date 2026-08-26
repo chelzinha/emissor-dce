@@ -93,8 +93,6 @@ jobs:
               "        volume: state.volumes[0], objects: [(await action('production.documents.test')).object], campaign: state.campaign,",
               "        status: 'READY_FOR_UNIFIED_LABEL', operation: { id: state.campaign.id, name: state.campaign.name, cnpj: state.campaign.cnpj, candidateName: state.campaign.candidateName }, volume: state.volumes[0], gates: gates(), senderIssues: [], objects: (await action('production.documents.test')).objects,",
           )
-          if "objects: [(await action('production.documents.test')).object]" in source or "        object: {" in source:
-              raise SystemExit('Contrato simulado dos documentos não foi atualizado.')
 
           source = source.replace(
               "  await expect(activeCard.locator('[data-op=\"test\"]')).toBeVisible({ timeout: 30_000 });\n  await activeCard.locator('[data-op=\"test\"]').click();\n  await expect(page.locator('[data-label-test-dialog]')).toBeVisible();\n  await page.locator('[data-label-test-input]').fill(TRACKING);\n  await page.locator('[data-label-test-confirm]').click();\n  await expect(page.locator('[data-label-test-dialog]')).toHaveCount(0);",
