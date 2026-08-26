@@ -9,12 +9,13 @@ function campaignId() {
   return ROOT?.querySelector('#campaign-select')?.value || '';
 }
 
-function pinProductionStage() {
+function pinProductionStage(stageNumber = 7) {
+  const stage = Number(stageNumber) === 8 ? 8 : 7;
   try {
-    sessionStorage.setItem(STAGE_KEY, '7');
+    sessionStorage.setItem(STAGE_KEY, String(stage));
     sessionStorage.removeItem(RESUME_KEY);
   } catch {}
-  if (ROOT) ROOT.dataset.operationStage = '7';
+  if (ROOT) ROOT.dataset.operationStage = String(stage);
 }
 
 function notify(message, type = 'info') {
@@ -79,26 +80,26 @@ async function approveLabelTest(button) {
 
   running = true;
   button.disabled = true;
-  pinProductionStage();
+  pinProductionStage(7);
   try {
     const data = await dataAction('production.labelTest.data', {
       campaignId: cid,
       productionBatchId: batchId,
     });
-    pinProductionStage();
+    pinProductionStage(7);
     const readTrackingCode = await askTrackingCode(String(data.trackingCode || ''));
-    pinProductionStage();
+    pinProductionStage(7);
     if (readTrackingCode == null) return;
     await dataAction('production.labelTest.approve', {
       campaignId: cid,
       productionBatchId: batchId,
       readTrackingCode,
     });
-    pinProductionStage();
+    pinProductionStage(7);
     remountCard(button);
     notify('Etiqueta teste aprovada. O lote está pronto para avançar à impressão.', 'success');
   } catch (error) {
-    pinProductionStage();
+    pinProductionStage(7);
     notify(error.message || 'Não foi possível validar a etiqueta teste.', 'error');
   } finally {
     running = false;
@@ -115,6 +116,14 @@ document.addEventListener('click', (event) => {
     return;
   }
 
-  const generationButton = event.target.closest?.('[data-generate-test],[data-generate-volume]');
-  if (generationButton && ROOT?.contains(generationButton)) pinProductionStage();
+  const testGenerationButton = event.target.closest?.('[data-generate-test]');
+  if (testGenerationButton && ROOT?.contains(testGenerationButton)) {
+    pinProductionStage(7);
+    return;
+  }
+
+  const volumeGenerationButton = event.target.closest?.('[data-generate-volume]');
+  if (volumeGenerationButton && ROOT?.contains(volumeGenerationButton)) {
+    pinProductionStage(8);
+  }
 }, true);
