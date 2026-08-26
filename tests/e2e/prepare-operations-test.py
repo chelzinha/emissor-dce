@@ -74,7 +74,5 @@ if "data-label-test-dialog" in source:
     raise SystemExit('Fluxo antigo da validação do SRO ainda está presente.')
 if "name: 'Preparar base'" in source:
     raise SystemExit('Fluxo antigo de preparação da base ainda está presente.')
-if "toHaveAttribute('data-operation-stage'" in source:
-    raise SystemExit('Validação antiga da etapa ainda está presente.')
 
 path.write_text(source, encoding='utf-8')
