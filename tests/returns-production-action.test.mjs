@@ -6,6 +6,7 @@ const modeFlow = fs.readFileSync(new URL('../src/elections-document-mode-ui.js',
 const dceFlow = fs.readFileSync(new URL('../src/elections-production-dce-ui.js', import.meta.url), 'utf8');
 const agencyHtml = fs.readFileSync(new URL('../eleicoes.html', import.meta.url), 'utf8');
 const clientHtml = fs.readFileSync(new URL('../portal.html', import.meta.url), 'utf8');
+const certificateHtml = fs.readFileSync(new URL('../portal-certificado.html', import.meta.url), 'utf8');
 
 test('retorno pronto oferece as duas modalidades documentais', () => {
   assert.match(modeFlow, /Gerar Declaração Simplificada/);
@@ -22,18 +23,19 @@ test('retorno em produção oferece continuação em vez de nova criação', () 
   assert.match(modeFlow, /continueToProduction/);
 });
 
-test('painel da agência mantém preflight DC-e e identifica o portal público temporário', () => {
+test('painel da agência mantém preflight e encaminha autorização ao Portal do Cliente', () => {
   assert.match(agencyHtml, /elections-document-mode-ui\.js/);
   assert.match(agencyHtml, /elections-production-dce-ui\.js/);
   assert.doesNotMatch(agencyHtml, /elections-release-simplified\.js/);
   assert.match(dceFlow, /productionDce\.preflight/);
-  assert.match(dceFlow, /Abrir validação de CNPJ/);
-  assert.match(dceFlow, /portal público está temporariamente em modo demonstração e validação de CNPJ/);
-  assert.doesNotMatch(dceFlow, /Abrir Portal do Cliente/);
+  assert.match(dceFlow, /Abrir Portal do Cliente/);
+  assert.match(dceFlow, /autorizar a DC-e com o próprio e-CNPJ A1/);
+  assert.doesNotMatch(dceFlow, /portal público está temporariamente em modo demonstração/i);
 });
 
-test('link do usuário final aponta temporariamente para validação pública de CNPJ', () => {
-  assert.match(clientHtml, /client-cnpj-temp\.js/);
-  assert.doesNotMatch(clientHtml, /client-portal\.js/);
-  assert.doesNotMatch(clientHtml, /client-postal-simulator\.js/);
+test('portal autenticado autoriza DC-e e a validação isolada permanece em rota própria', () => {
+  assert.match(clientHtml, /client-portal\.js/);
+  assert.match(clientHtml, /client-finance-highlights\.js/);
+  assert.doesNotMatch(clientHtml, /client-cnpj-temp\.js/);
+  assert.match(certificateHtml, /client-cnpj-temp\.js/);
 });
