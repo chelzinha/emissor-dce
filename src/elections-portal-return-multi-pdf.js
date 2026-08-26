@@ -6,6 +6,7 @@ let selectedFiles = [];
 let selectedCampaignId = "";
 let mountScheduled = false;
 let synchronizing = false;
+let mountedInput = null;
 
 function h(value) {
   return String(value ?? "").replace(/[&<>'"]/g, (char) => ({
@@ -30,6 +31,10 @@ export function mergePortalPdfFiles(currentFiles = [], incomingFiles = []) {
     map.set(portalPdfFileKey(file), file);
   }
   return [...map.values()];
+}
+
+function selectionSignature(files = selectedFiles) {
+  return files.map(portalPdfFileKey).join("|");
 }
 
 function campaignId() {
@@ -91,12 +96,18 @@ function renderSelection(input) {
   const parent = input?.closest(".return-file") || input?.parentElement;
   if (!parent) return;
   let box = parent.querySelector("[data-portal-pdf-selection]");
+  const signature = selectionSignature();
+  if (box?.dataset.selectionSignature === signature) {
+    updateAnalyzeButton();
+    return;
+  }
   if (!box) {
     box = document.createElement("div");
     box.dataset.portalPdfSelection = "1";
     box.className = "return-pdf-selection";
     parent.appendChild(box);
   }
+  box.dataset.selectionSignature = signature;
 
   if (!selectedFiles.length) {
     box.innerHTML = `<div class="return-pdf-selection-empty">Nenhum PDF acumulado. Você pode adicionar os arquivos em seleções sucessivas.</div>`;
@@ -159,21 +170,29 @@ function handleSelection(event) {
 function mount() {
   ensureStyle();
   const cid = campaignId();
-  if (selectedCampaignId && cid !== selectedCampaignId) selectedFiles = [];
+  if (selectedCampaignId && cid !== selectedCampaignId) {
+    selectedFiles = [];
+    mountedInput = null;
+  }
   selectedCampaignId = cid;
 
   const root = document.querySelector(ROOT_SELECTOR);
   const input = root?.querySelector("#portal-return-pdfs");
-  if (!input) return;
+  if (!input) {
+    mountedInput = null;
+    return;
+  }
 
+  const isNewInput = input !== mountedInput;
+  mountedInput = input;
   if (input.dataset.portalPdfAccumulatorReady !== "1") {
     input.dataset.portalPdfAccumulatorReady = "1";
     input.addEventListener("change", handleSelection, { capture: true });
   }
 
-  if (selectedFiles.length) syncNativeInput(input);
+  if (isNewInput && selectedFiles.length) syncNativeInput(input);
   renderSelection(input);
-  dispatchSelection();
+  if (isNewInput && selectedFiles.length) dispatchSelection();
 }
 
 function scheduleMount() {

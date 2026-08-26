@@ -31,3 +31,10 @@ test("integra acumulador ao formulário real e intercepta a troca antes dos list
   assert.match(source, /addEventListener\("change", handleSelection, \{ capture: true \}\)/);
   assert.match(source, /seleções sucessivas/);
 });
+
+test("observador não redesenha nem redispara a seleção em toda mutação do DOM", () => {
+  assert.match(source, /box\?\.dataset\.selectionSignature === signature/);
+  assert.match(source, /const isNewInput = input !== mountedInput/);
+  assert.match(source, /if \(isNewInput && selectedFiles\.length\) dispatchSelection\(\)/);
+  assert.doesNotMatch(source, /renderSelection\(input\);\n  dispatchSelection\(\);\n}/);
+});
