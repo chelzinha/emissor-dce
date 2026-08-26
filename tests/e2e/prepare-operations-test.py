@@ -66,8 +66,12 @@ source = source.replace(
     "  await expect(overlay).toBeVisible({ timeout: 30_000 });\n  await expect(page.locator('.label-preview-loading')).toHaveCount(0, { timeout: 30_000 });",
 )
 source = source.replace(
+    "  await overlay.dispatchEvent('pointerdown', { clientX: 80, clientY: 80, pointerId: 1 });\n  await overlay.dispatchEvent('pointermove', { clientX: 180, clientY: 180, pointerId: 1 });\n  await overlay.dispatchEvent('pointerup', { clientX: 180, clientY: 180, pointerId: 1 });",
+    "  const overlayBox = await overlay.boundingBox();\n  if (!overlayBox) throw new Error('Área de marcação do Data Matrix indisponível.');\n  await page.mouse.move(overlayBox.x + overlayBox.width * 0.15, overlayBox.y + overlayBox.height * 0.15);\n  await page.mouse.down();\n  await page.mouse.move(overlayBox.x + overlayBox.width * 0.45, overlayBox.y + overlayBox.height * 0.45, { steps: 6 });\n  await page.mouse.up();",
+)
+source = source.replace(
     "  await page.locator('[data-font-scale]').fill('0.80');",
-    "  await expect(page.locator('[data-check-stamp]')).toHaveClass(/ok/, { timeout: 10_000 });\n  await expect(page.locator('[data-check-region]')).toHaveClass(/ok/);\n  await page.locator('[data-font-scale]').fill('0.80');",
+    "  await expect(page.locator('[data-check-stamp]')).toHaveClass(/ok/, { timeout: 10_000 });\n  await expect(page.locator('[data-check-region]')).toHaveClass(/ok/, { timeout: 10_000 });\n  await page.locator('[data-font-scale]').fill('0.80');",
 )
 source = source.replace(
     "  await page.getByRole('button', { name: 'Gerar Declaração Simplificada' }).click();\n  await expect(page.locator('[data-volumes=\"prod-active\"]')).toBeVisible({ timeout: 30_000 });",
