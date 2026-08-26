@@ -67,6 +67,14 @@ jobs:
           PY
       - name: Percorrer o fluxo completo
         run: npx playwright test tests/e2e/operations-flow.spec.mjs --workers=1 --repeat-each=1 --max-failures=1 --reporter=line
+      - name: Guardar evidências do navegador
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidencias-fluxo-operacional
+          path: test-results
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Mostrar log do servidor em caso de falha
         if: failure()
         run: cat /tmp/agf-preview.log || true
