@@ -12,7 +12,11 @@ function nativeViewButton(view) {
 function activateNativeView(view) {
   const button = nativeViewButton(view);
   if (!button) return false;
-  button.click();
+  button.dispatchEvent(new MouseEvent('click', {
+    bubbles: false,
+    cancelable: true,
+    view: window,
+  }));
   return true;
 }
 
