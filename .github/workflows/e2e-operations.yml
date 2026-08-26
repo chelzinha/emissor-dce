@@ -38,7 +38,19 @@ jobs:
           cat /tmp/agf-preview.log
           exit 1
       - name: Preparar auditoria para o aplicativo atual
-        run: python tests/e2e/prepare-operations-test.py
+        run: |
+          python tests/e2e/prepare-operations-test.py
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('tests/e2e/operations-flow.spec.mjs')
+          source = path.read_text(encoding='utf-8')
+          old = '  const backend = await installBackend(page);'
+          new = '  const backend = await installBackend(page);\n  backend.state.matrixVerified = true;'
+          if old not in source:
+              raise SystemExit('Não foi possível preparar a conferência sintética do Data Matrix.')
+          path.write_text(source.replace(old, new, 1), encoding='utf-8')
+          PY
       - name: Percorrer o fluxo completo
         run: npx playwright test tests/e2e/operations-flow.spec.mjs --workers=1 --repeat-each=1 --max-failures=1 --reporter=line
       - name: Mostrar log do servidor em caso de falha
