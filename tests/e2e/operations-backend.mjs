@@ -156,6 +156,7 @@ export async function installOperationsBackend(page, { state, tracking, header, 
         const record = {
           ID: 'export-1', id: 'export-1',
           ADDRESS_LIST_ID: params.addressListId || 'base-1', addressListId: params.addressListId || 'base-1',
+          FILE_ID: 'file-export-1', fileId: 'file-export-1',
           FILE_NAME: 'portal-sedex-250.csv', fileName: 'portal-sedex-250.csv',
           SERVICE: params.service || 'SEDEX', service: params.service || 'SEDEX',
           TOTAL_ROWS: total, total,
