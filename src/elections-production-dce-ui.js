@@ -52,8 +52,8 @@ function issueMarkup(issues) {
   return `<div class="dce-preflight-issues"><strong>${issues.length} objeto(s) com pendências fiscais</strong>${issues.slice(0, 20).map((item) => `<div><code>${h(item.trackingCode)}</code><span>${h((item.issues || []).join(" "))}</span></div>`).join("")}${issues.length > 20 ? `<small>+ ${issues.length - 20} ocorrências</small>` : ""}</div>`;
 }
 
-function publicValidationLinkMarkup(className = "ghost") {
-  return `<a class="${className}" data-client-validation-link href="/portal" target="_blank" rel="noopener">Abrir validação de CNPJ</a>`;
+function clientPortalLinkMarkup(className = "ghost") {
+  return `<a class="${className}" data-client-portal-link href="/portal" target="_blank" rel="noopener">Abrir Portal do Cliente</a>`;
 }
 
 function refreshCurrentCampaign() {
@@ -89,7 +89,7 @@ async function prepare(card, batchId, button) {
   }
 }
 
-function ensureClientState(actions, batchId, status, message, className = "", showValidationLink = false) {
+function ensureClientState(actions, batchId, status, message, className = "", showClientPortal = false) {
   if (!actions) return;
   const existing = actions.querySelector(`[data-dce-client-access="${CSS.escape(batchId)}"]`);
   if (existing?.dataset.dceState === status) return;
@@ -98,18 +98,18 @@ function ensureClientState(actions, batchId, status, message, className = "", sh
   wrapper.className = `dce-client-access ${className}`.trim();
   wrapper.dataset.dceClientAccess = batchId;
   wrapper.dataset.dceState = status;
-  wrapper.innerHTML = `<span>${h(message)}</span>${showValidationLink ? publicValidationLinkMarkup("secondary") : ""}`;
+  wrapper.innerHTML = `<span>${h(message)}</span>${showClientPortal ? clientPortalLinkMarkup("secondary") : ""}`;
   actions.appendChild(wrapper);
 }
 
-function temporaryAuthorizationMessage(status) {
+function authorizationMessage(status) {
   if (status === "DCE_PARTIAL") {
-    return "Autorização fiscal parcial registrada. O portal público está temporariamente em modo demonstração e validação de CNPJ, portanto a continuação da autorização não está disponível nesse link nesta fase.";
+    return "Autorização fiscal parcial registrada. O cliente pode entrar no Portal do Cliente para continuar somente os documentos pendentes com o próprio e-CNPJ A1.";
   }
   if (status === "DCE_RESERVED") {
-    return "Autorização fiscal iniciada anteriormente. O portal público está temporariamente em modo demonstração e validação de CNPJ, portanto a continuação da autorização não está disponível nesse link nesta fase.";
+    return "Autorização fiscal iniciada. O cliente pode entrar no Portal do Cliente para continuar o lote com o próprio e-CNPJ A1.";
   }
-  return "Lote fiscal validado pela agência. O portal público está temporariamente em modo demonstração e validação de CNPJ. A autorização da DC-e será reativada no portal definitivo.";
+  return "Lote fiscal validado pela agência. O cliente já pode entrar no Portal do Cliente e autorizar a DC-e com o próprio e-CNPJ A1.";
 }
 
 function decorate() {
@@ -139,7 +139,7 @@ function decorate() {
     preflight?.remove();
 
     if (["DCE_PREPARED", "DCE_RESERVED", "DCE_PARTIAL"].includes(status)) {
-      ensureClientState(actions, batchId, status, temporaryAuthorizationMessage(status), status === "DCE_PARTIAL" ? "warn" : "info", true);
+      ensureClientState(actions, batchId, status, authorizationMessage(status), status === "DCE_PARTIAL" ? "warn" : "info", true);
       return;
     }
 
