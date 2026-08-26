@@ -1,0 +1,46 @@
+name: Auditar fluxo operacional no navegador
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'eleicoes.html'
+      - 'tests/e2e/**'
+      - '.github/workflows/e2e-operations.yml'
+  workflow_dispatch:
+
+jobs:
+  browser-flow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Instalar Playwright sem alterar o projeto
+        run: |
+          npm install --no-save --package-lock=false @playwright/test@1.55.0
+          npx playwright install --with-deps chromium
+      - run: npm run build
+      - name: Iniciar aplicação local
+        run: |
+          npm run preview -- --host 0.0.0.0 > /tmp/agf-preview.log 2>&1 &
+          echo $! > /tmp/agf-preview.pid
+          for tentativa in $(seq 1 60); do
+            if curl -fsS http://localhost:4173/eleicoes.html >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/agf-preview.log
+          exit 1
+      - name: Preparar auditoria para o aplicativo atual
+        run: python tests/e2e/prepare-operations-test.py
+      - name: Percorrer o fluxo completo
+        run: npx playwright test tests/e2e/operations-flow.spec.mjs --workers=1 --repeat-each=1 --max-failures=1 --reporter=line
+      - name: Mostrar log do servidor em caso de falha
+        if: failure()
+        run: cat /tmp/agf-preview.log || true
