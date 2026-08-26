@@ -22,7 +22,7 @@ if count != 1:
 
 source, stage_count = re.subn(
     r"async function clickStage\(page, number\) \{.*?\n\}",
-    "async function clickStage(page, number) {\n  const button = page.locator(`button[data-operation-stage=\"${number}\"]`);\n  await button.click();\n  if (number === 10 || number === 11) {\n    const view = number === 10 ? 'tracking' : 'reports';\n    const pageSelector = number === 10 ? '.tracking-page' : '.reports-page';\n    const heading = number === 10 ? 'Acompanhamento' : 'Relatórios';\n    const nativeButton = page.locator(`.app-nav > button[data-view=\"${view}\"]`);\n    await expect(nativeButton).toHaveCount(1, { timeout: 30_000 });\n    await nativeButton.evaluate((node) => {\n      node.dispatchEvent(new MouseEvent('click', { bubbles: false, cancelable: true, view: window }));\n    });\n    await expect(page.locator(pageSelector)).toBeVisible({ timeout: 30_000 });\n    await expect(page.locator(`${pageSelector} h1`)).toHaveText(heading, { timeout: 30_000 });\n    return;\n  }\n  await expect(button).toHaveClass(/active/);\n}",
+    "async function clickStage(page, number) {\n  const button = page.locator(`button[data-operation-stage=\"${number}\"]`);\n  await button.click();\n  if (number === 10 || number === 11) {\n    const view = number === 10 ? 'tracking' : 'reports';\n    const pageSelector = number === 10 ? '.tracking-page' : '.reports-page';\n    const heading = number === 10 ? 'Acompanhamento' : 'Relatórios';\n    const nativeButton = page.locator(`.app-nav > button[data-view=\"${view}\"]`);\n    await expect(nativeButton).toHaveCount(1, { timeout: 30_000 });\n    await nativeButton.evaluate((node) => {\n      node.dispatchEvent(new MouseEvent('click', { bubbles: false, cancelable: true, view: window }));\n    });\n    await page.waitForTimeout(1_500);\n    if (await page.locator(pageSelector).count() === 0) {\n      const diagnostic = await page.evaluate(({ selectedView }) => {\n        const root = document.querySelector('#elections-app');\n        const sourceButton = document.querySelector(`.app-nav > button[data-view=\"${selectedView}\"]`);\n        const slot = document.querySelector('.app-main > section');\n        return {\n          selectedView,\n          campaignValue: document.querySelector('#campaign-select')?.value ?? null,\n          hasMainSlot: Boolean(slot),\n          sourceButtonExists: Boolean(sourceButton),\n          sourceButtonActive: Boolean(sourceButton?.classList.contains('active')),\n          sourceButtonClass: sourceButton?.className || '',\n          operationStage: root?.dataset.operationStage || '',\n          activeViews: [...document.querySelectorAll('.app-nav > button.active[data-view]')].map((node) => node.dataset.view),\n          slotPreview: String(slot?.textContent || '').trim().slice(0, 500),\n        };\n      }, { selectedView: view });\n      throw new Error(`A etapa dinâmica não renderizou: ${JSON.stringify(diagnostic)}`);\n    }\n    await expect(page.locator(pageSelector)).toBeVisible({ timeout: 30_000 });\n    await expect(page.locator(`${pageSelector} h1`)).toHaveText(heading, { timeout: 30_000 });\n    return;\n  }\n  await expect(button).toHaveClass(/active/);\n}",
     source,
     count=1,
     flags=re.S,
@@ -96,6 +96,12 @@ source = source.replace(
 source = source.replace(
     "page.getByRole('heading', { name: 'Fechamento operacional' })",
     "page.getByRole('heading', { name: 'Relatórios', exact: true })",
+)
+
+source = source.replace(
+    "  const backend = await installBackend(page);",
+    "  page.on('pageerror', (error) => console.log(`[pageerror] ${error.message}`));\n  page.on('console', (message) => { if (message.type() === 'error') console.log(`[console:error] ${message.text()}`); });\n  const backend = await installBackend(page);",
+    1,
 )
 
 if "data-label-test-dialog" in source:
