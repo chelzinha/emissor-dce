@@ -95,8 +95,8 @@ async function productionBatch(batchId) {
 
 function refreshGates(card) {
   const slot = card?.querySelector('.production-ops-gates');
-  if (!slot) return;
-  slot.remove();
+  slot?.remove();
+  card?.querySelector('.production-documents')?.remove();
 }
 
 async function inheritImportedAudit(card, batch) {
