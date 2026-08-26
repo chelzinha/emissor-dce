@@ -1,6 +1,6 @@
 import "./label-setup-ui.css";
 import { loadPostalVendors } from "./postal-vendors.js";
-import { completeLabelSetup, normalizeLabelSetup } from "./label-setup.js";
+import { completeLabelSetup, normalizeLabelFontScale, normalizeLabelSetup } from "./label-setup.js";
 
 function h(value) {
   return String(value ?? "").replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char]));
@@ -48,6 +48,8 @@ async function renderFirstPage(pdfFile, canvas, overlay) {
   canvas.style.aspectRatio = `${canvas.width}/${canvas.height}`;
   overlay.style.aspectRatio = `${canvas.width}/${canvas.height}`;
   await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+  try { page.cleanup?.(); } catch {}
+  try { await document.destroy?.(); } catch {}
 }
 
 export async function configureLabelSetup({ pdfFiles, initialSetup = null } = {}) {
@@ -77,6 +79,11 @@ export async function configureLabelSetup({ pdfFiles, initialSetup = null } = {}
         <div class="label-stamp-upload"><input type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg" data-stamp><span>Selecionar chancela</span><small>PNG ou JPG. Prefira fundo branco ou transparente.</small></div>
         <div class="label-stamp-preview" data-stamp-preview>${setup.postageMarkDataUrl ? `<img src="${h(setup.postageMarkDataUrl)}" alt="Prévia da chancela">` : "<span>Nenhuma chancela carregada.</span>"}</div>
         <div class="label-stamp-name" data-stamp-name>${h(setup.postageMarkName || "")}</div>
+        <div class="label-font-scale">
+          <label for="label-font-scale">3. Escala das fontes</label>
+          <div class="label-font-scale-row"><input id="label-font-scale" type="number" min="0.80" max="1.10" step="0.05" value="${setup.fontScale.toFixed(2)}" data-font-scale><strong data-font-scale-value>${setup.fontScale.toFixed(2).replace(".", ",")}×</strong></div>
+          <small>0,80 reduz todos os textos sem mover caixas, códigos de barras ou linhas. Faixa permitida: 0,80 a 1,10.</small>
+        </div>
         <div class="label-setup-checklist">
           <div data-check-region class="${setup.matrixRegion ? "ok" : ""}"><span></span>Área do Data Matrix</div>
           <div data-check-stamp class="${setup.postageMarkDataUrl ? "ok" : ""}"><span></span>Chancela</div>
@@ -93,6 +100,8 @@ export async function configureLabelSetup({ pdfFiles, initialSetup = null } = {}
   const regionStatus = backdrop.querySelector("[data-region-status]");
   const stampPreview = backdrop.querySelector("[data-stamp-preview]");
   const stampName = backdrop.querySelector("[data-stamp-name]");
+  const fontScaleInput = backdrop.querySelector("[data-font-scale]");
+  const fontScaleValue = backdrop.querySelector("[data-font-scale-value]");
   const checkRegion = backdrop.querySelector("[data-check-region]");
   const checkStamp = backdrop.querySelector("[data-check-stamp]");
   const errorBox = backdrop.querySelector("[data-error]");
@@ -108,6 +117,12 @@ export async function configureLabelSetup({ pdfFiles, initialSetup = null } = {}
     checkStamp.classList.toggle("ok", Boolean(setup.postageMarkDataUrl));
     stampPreview.innerHTML = setup.postageMarkDataUrl ? `<img src="${h(setup.postageMarkDataUrl)}" alt="Prévia da chancela">` : "<span>Nenhuma chancela carregada.</span>";
     stampName.textContent = setup.postageMarkName || "";
+  };
+  const updateFontScaleUi = () => {
+    const value = normalizeLabelFontScale(fontScaleInput.value);
+    fontScaleInput.value = value.toFixed(2);
+    fontScaleValue.textContent = `${value.toFixed(2).replace(".", ",")}×`;
+    setup = { ...setup, fontScale: value };
   };
 
   try {
@@ -155,6 +170,8 @@ export async function configureLabelSetup({ pdfFiles, initialSetup = null } = {}
   overlay.addEventListener("pointercancel", finishDrag);
 
   backdrop.querySelector("[data-clear-region]").addEventListener("click", () => { draftRegion = null; updateRegionUi(); });
+  fontScaleInput.addEventListener("input", updateFontScaleUi);
+  fontScaleInput.addEventListener("blur", updateFontScaleUi);
   backdrop.querySelector("[data-stamp]").addEventListener("change", async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -173,7 +190,8 @@ export async function configureLabelSetup({ pdfFiles, initialSetup = null } = {}
     backdrop.addEventListener("click", (event) => { if (event.target === backdrop) close(null); });
     backdrop.querySelector("[data-save]").addEventListener("click", () => {
       try {
-        const completed = completeLabelSetup({ ...setup, matrixRegion: draftRegion, configuredAt: new Date().toISOString() });
+        updateFontScaleUi();
+        const completed = completeLabelSetup({ ...setup, matrixRegion: draftRegion, fontScale: fontScaleInput.value, configuredAt: new Date().toISOString() });
         close(completed);
       } catch (error) { errorBox.textContent = error.message; }
     });
