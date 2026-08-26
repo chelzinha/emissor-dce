@@ -20,10 +20,15 @@ source, count = re.subn(
 if count != 1:
     raise SystemExit('Não foi possível substituir o backend antigo do teste.')
 
-source = source.replace(
-    "async function clickStage(page, number) {\n  await page.locator(`[data-operation-stage=\"${number}\"]`).click();\n  await expect(page.locator('#elections-app')).toHaveAttribute('data-operation-stage', String(number));\n}",
+source, stage_count = re.subn(
+    r"async function clickStage\(page, number\) \{.*?\n\}",
     "async function clickStage(page, number) {\n  const button = page.locator(`button[data-operation-stage=\"${number}\"]`);\n  await button.click();\n  await expect(button).toHaveClass(/active/);\n}",
+    source,
+    count=1,
+    flags=re.S,
 )
+if stage_count != 1:
+    raise SystemExit('Não foi possível atualizar a navegação entre etapas.')
 
 old = """  await page.goto(APP_URL);\n  await expect(page.getByText('Passo a passo da operação')).toBeVisible();"""
 new = """  await page.goto(APP_URL);\n  await expect(page.locator('[data-operation-nav]')).toBeVisible({ timeout: 30_000 });"""
