@@ -28,9 +28,10 @@ test('entrega física não é mais confirmada dentro dos gates de produção', (
   assert.match(productionOps, /Continue na etapa 9 - Entrega à operação/);
 });
 
-test('fluxo DC-e não confunde o portal demonstrativo com autorização fiscal', () => {
-  assert.match(dceUi, /Abrir validação de CNPJ/);
-  assert.match(dceUi, /portal público está temporariamente em modo demonstração e validação de CNPJ/);
-  assert.match(dceUi, /A autorização da DC-e será reativada no portal definitivo/);
-  assert.doesNotMatch(dceUi, /Abrir Portal do Cliente/);
+test('fluxo DC-e encaminha a autorização ao portal autenticado do cliente', () => {
+  assert.match(dceUi, /Abrir Portal do Cliente/);
+  assert.match(dceUi, /Lote fiscal validado pela agência/);
+  assert.match(dceUi, /autorizar a DC-e com o próprio e-CNPJ A1/);
+  assert.doesNotMatch(dceUi, /Abrir validação de CNPJ/);
+  assert.doesNotMatch(dceUi, /portal público está temporariamente em modo demonstração/);
 });
