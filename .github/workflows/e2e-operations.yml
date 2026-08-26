@@ -98,7 +98,7 @@ jobs:
 
           source = source.replace(
               "  await expect(activeCard.locator('[data-op=\"test\"]')).toBeVisible({ timeout: 30_000 });\n  await activeCard.locator('[data-op=\"test\"]').click();\n  await expect(page.locator('[data-label-test-dialog]')).toBeVisible();\n  await page.locator('[data-label-test-input]').fill(TRACKING);\n  await page.locator('[data-label-test-confirm]').click();\n  await expect(page.locator('[data-label-test-dialog]')).toHaveCount(0);",
-              "  await expect(activeCard.locator('[data-op=\"test\"]')).toBeVisible({ timeout: 30_000 });\n  page.once('dialog', (dialog) => dialog.accept(TRACKING));\n  await activeCard.locator('[data-op=\"test\"]').click();",
+              "  await expect(activeCard.locator('[data-op=\"test\"]')).toBeVisible({ timeout: 30_000 });\n  await activeCard.locator('[data-op=\"test\"]').click();\n  const labelTestModal = page.locator('#label-test-stability-modal');\n  await expect(labelTestModal).toBeVisible();\n  await labelTestModal.locator('input[name=\"tracking\"]').fill(TRACKING);\n  await labelTestModal.getByRole('button', { name: 'Confirmar leitura' }).click();\n  await expect(labelTestModal).toHaveCount(0);",
           )
           if "data-label-test-dialog" in source:
               raise SystemExit('Fluxo antigo da validação do SRO ainda está presente.')
