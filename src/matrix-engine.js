@@ -204,18 +204,70 @@ export async function auditPdfDocuments(pdfDocuments, ZXing, options = {}) {
 
       if (processed % 5 === 0) await new Promise((resolve) => setTimeout(resolve, 0));
     }
-    try { item.doc.cleanup?.(); } catch { /* limpeza best effort */ }
+    try { await item.doc.cleanup?.(); } catch { /* limpeza best effort */ }
   }
 
   return { crops, audit, diagnostics, totalPages };
+}
+
+async function destroyPdfDocument(doc) {
+  if (!doc) return;
+  try { doc.cleanup?.(); } catch { /* limpeza best effort */ }
+  try { await doc.destroy?.(); } catch { /* limpeza best effort */ }
+}
+
+function createLazyPdfDocument(file, pdfjsLib, numPages) {
+  let activeDocument = null;
+  let opening = null;
+
+  async function open() {
+    if (activeDocument) return activeDocument;
+    if (!opening) {
+      opening = (async () => {
+        const document = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+        activeDocument = document;
+        opening = null;
+        return document;
+      })().catch((error) => {
+        opening = null;
+        throw error;
+      });
+    }
+    return opening;
+  }
+
+  async function close() {
+    let document = activeDocument;
+    if (!document && opening) {
+      try { document = await opening; } catch { document = null; }
+    }
+    activeDocument = null;
+    opening = null;
+    await destroyPdfDocument(document);
+  }
+
+  return {
+    numPages,
+    async getPage(pageNumber) {
+      return (await open()).getPage(pageNumber);
+    },
+    cleanup: close,
+    destroy: close,
+  };
 }
 
 export async function loadPdfDocuments(files, pdfjsLib) {
   if (!pdfjsLib) throw new Error("pdf.js nao disponivel");
   const documents = [];
   for (const file of [...files]) {
-    const doc = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
-    documents.push({ name: file.name, doc });
+    const probe = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+    const numPages = Number(probe.numPages || 0);
+    await destroyPdfDocument(probe);
+    documents.push({
+      name: file.name,
+      doc: createLazyPdfDocument(file, pdfjsLib, numPages),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
   }
   return documents;
 }

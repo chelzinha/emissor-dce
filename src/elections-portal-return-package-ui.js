@@ -2,7 +2,9 @@ import { parsePortalReturnCsv } from './portal-return.js';
 
 const ROOT = document.querySelector('#elections-app');
 const STYLE_ID = 'portal-return-package-ui-style';
+const PDF_SELECTION_EVENT = 'portal-return:pdf-selection';
 let scheduled = false;
+let accumulatedPdfFiles = [];
 
 function ensureStyle() {
   if (document.getElementById(STYLE_ID)) return;
@@ -45,16 +47,17 @@ async function updateCsvSummary(input) {
   }
 }
 
-function updatePdfSummary(input) {
+function updatePdfSummary(input, files = accumulatedPdfFiles) {
   const node = summaryNode(input, 'pdf');
-  const files = [...(input.files || [])];
-  if (!files.length) {
+  const selected = [...(files || [])];
+  if (!selected.length) {
     node.textContent = 'Nenhum PDF selecionado.';
+    node.classList.add('warn');
     return;
   }
-  const names = files.map((file) => file.name).join(', ');
-  node.innerHTML = `<strong>${files.length} PDF${files.length > 1 ? 's' : ''} selecionado${files.length > 1 ? 's' : ''}:</strong> ${names}. Se o retorno tiver mais de um PDF, escolha todos de uma vez neste campo.`;
-  node.classList.toggle('warn', files.length === 1);
+  const names = selected.map((file) => file.name).join(', ');
+  node.innerHTML = `<strong>${selected.length} PDF${selected.length > 1 ? 's' : ''} acumulado${selected.length > 1 ? 's' : ''}:</strong> ${names}. Você pode escolher os arquivos em seleções sucessivas; os anteriores serão mantidos.`;
+  node.classList.remove('warn');
 }
 
 function clearStaleAnalysis() {
@@ -74,14 +77,7 @@ function mount() {
     });
     updateCsvSummary(csv);
   }
-  if (pdf && !pdf.dataset.packageSummaryReady) {
-    pdf.dataset.packageSummaryReady = '1';
-    pdf.addEventListener('change', () => {
-      clearStaleAnalysis();
-      updatePdfSummary(pdf);
-    });
-    updatePdfSummary(pdf);
-  }
+  if (pdf) updatePdfSummary(pdf, accumulatedPdfFiles.length ? accumulatedPdfFiles : [...(pdf.files || [])]);
 }
 
 function scheduleMount() {
@@ -92,6 +88,13 @@ function scheduleMount() {
     mount();
   });
 }
+
+document.addEventListener(PDF_SELECTION_EVENT, (event) => {
+  accumulatedPdfFiles = [...(event.detail?.files || [])];
+  clearStaleAnalysis();
+  const input = ROOT?.querySelector('#portal-return-pdfs');
+  if (input) updatePdfSummary(input, accumulatedPdfFiles);
+});
 
 const observer = new MutationObserver(scheduleMount);
 if (ROOT) observer.observe(ROOT, { childList: true, subtree: true });
