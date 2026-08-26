@@ -64,6 +64,10 @@ jobs:
               "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGNkYGD4z8DAwMDEAAUADigBA0dwHFEAAAAASUVORK5CYII=",
           )
           source = source.replace(
+              "  await expect(overlay).toBeVisible({ timeout: 30_000 });",
+              "  await expect(overlay).toBeVisible({ timeout: 30_000 });\n  await expect(page.locator('.label-preview-loading')).toHaveCount(0, { timeout: 30_000 });",
+          )
+          source = source.replace(
               "  await page.locator('[data-font-scale]').fill('0.80');",
               "  await expect(page.locator('[data-check-stamp]')).toHaveClass(/ok/, { timeout: 10_000 });\n  await expect(page.locator('[data-check-region]')).toHaveClass(/ok/);\n  await page.locator('[data-font-scale]').fill('0.80');",
           )
