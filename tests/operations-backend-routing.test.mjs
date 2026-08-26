@@ -8,6 +8,7 @@ const operationsBridge = fs.readFileSync(new URL('../netlify/functions/_shared/o
 const portalUserCreate = fs.readFileSync(new URL('../netlify/functions/portal-user-create.mjs', import.meta.url), 'utf8');
 const agencyHtml = fs.readFileSync(new URL('../eleicoes.html', import.meta.url), 'utf8');
 const clientHtml = fs.readFileSync(new URL('../portal.html', import.meta.url), 'utf8');
+const tempClientHtml = fs.readFileSync(new URL('../portal-certificado.html', import.meta.url), 'utf8');
 const tempClient = fs.readFileSync(new URL('../src/client-cnpj-temp.js', import.meta.url), 'utf8');
 
 test('agency and full client frontend keep the isolated operations backend available', () => {
@@ -29,11 +30,14 @@ test('portal user provisioning remains available for reactivation of the full po
   assert.match(portalUserCreate, /campaign\.user\.add/);
 });
 
-test('release mantém DC-e completa na agência e usa portal demonstrativo temporário no cliente', () => {
+test('homologação mantém DC-e completa na agência, portal autenticado e validação isolada', () => {
   assert.match(agencyHtml, /elections-production-dce-ui\.js/);
   assert.match(agencyHtml, /elections-document-mode-ui\.js/);
   assert.doesNotMatch(agencyHtml, /elections-release-simplified\.js/);
-  assert.match(clientHtml, /client-cnpj-temp\.js/);
+  assert.match(clientHtml, /client-portal\.js/);
+  assert.match(clientHtml, /client-finance-highlights\.js/);
+  assert.doesNotMatch(clientHtml, /client-cnpj-temp\.js/);
+  assert.match(tempClientHtml, /client-cnpj-temp\.js/);
   assert.match(tempClient, /client-portal\.css/);
   assert.match(tempClient, /Dashboard/);
   assert.match(tempClient, /Validar CNPJ/);
