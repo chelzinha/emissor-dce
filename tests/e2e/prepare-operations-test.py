@@ -22,7 +22,7 @@ if count != 1:
 
 source, stage_count = re.subn(
     r"async function clickStage\(page, number\) \{.*?\n\}",
-    "async function clickStage(page, number) {\n  const button = page.locator(`button[data-operation-stage=\"${number}\"]`);\n  await button.click();\n  await expect(button).toHaveClass(/active/);\n}",
+    "async function clickStage(page, number) {\n  const button = page.locator(`button[data-operation-stage=\"${number}\"]`);\n  await button.click();\n  if (number === 10 || number === 11) {\n    const view = number === 10 ? 'tracking' : 'reports';\n    const nativeButton = page.locator(`.app-nav > button[data-view=\"${view}\"]`);\n    await expect(nativeButton).toBeVisible({ timeout: 30_000 });\n    if (!await nativeButton.evaluate((node) => node.classList.contains('active'))) {\n      await nativeButton.click();\n    }\n    await expect(nativeButton).toHaveClass(/active/, { timeout: 30_000 });\n    return;\n  }\n  await expect(button).toHaveClass(/active/);\n}",
     source,
     count=1,
     flags=re.S,
