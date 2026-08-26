@@ -21,8 +21,8 @@ if count != 1:
     raise SystemExit('Não foi possível substituir o backend antigo do teste.')
 
 source = source.replace(
-    'page.locator(`[data-operation-stage="${number}"]`).click()',
-    'page.locator(`button[data-operation-stage="${number}"]`).click()',
+    "async function clickStage(page, number) {\n  await page.locator(`[data-operation-stage=\"${number}\"]`).click();\n  await expect(page.locator('#elections-app')).toHaveAttribute('data-operation-stage', String(number));\n}",
+    "async function clickStage(page, number) {\n  const button = page.locator(`button[data-operation-stage=\"${number}\"]`);\n  await button.click();\n  await expect(button).toHaveClass(/active/);\n}",
 )
 
 old = """  await page.goto(APP_URL);\n  await expect(page.getByText('Passo a passo da operação')).toBeVisible();"""
@@ -69,5 +69,7 @@ if "data-label-test-dialog" in source:
     raise SystemExit('Fluxo antigo da validação do SRO ainda está presente.')
 if "name: 'Preparar base'" in source:
     raise SystemExit('Fluxo antigo de preparação da base ainda está presente.')
+if "toHaveAttribute('data-operation-stage'" in source:
+    raise SystemExit('Validação antiga da etapa ainda está presente.')
 
 path.write_text(source, encoding='utf-8')
