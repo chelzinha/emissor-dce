@@ -60,6 +60,10 @@ jobs:
           source = source.replace("[data-postage-mark]", "[data-stamp]")
           source = source.replace("[data-save-setup]", "[data-save]")
           source = source.replace(
+              "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z4i8AAAAASUVORK5CYII=",
+              "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGNkYGD4z8DAwMDEAAUADigBA0dwHFEAAAAASUVORK5CYII=",
+          )
+          source = source.replace(
               "  await page.locator('[data-font-scale]').fill('0.80');",
               "  await expect(page.locator('[data-check-stamp]')).toHaveClass(/ok/, { timeout: 10_000 });\n  await expect(page.locator('[data-check-region]')).toHaveClass(/ok/);\n  await page.locator('[data-font-scale]').fill('0.80');",
           )
