@@ -45,6 +45,10 @@ source = source.replace(
     "await expect(page.getByText('Arquivos prontos para o Portal Postal.')).toBeVisible();\n\n  await clickStage(page, 2);",
     "await expect(page.getByText('Arquivos prontos para o Portal Postal.')).toBeVisible({ timeout: 30_000 });\n  await page.waitForTimeout(1_000);\n  await expect(page.locator('[data-operation-nav]')).toBeVisible({ timeout: 30_000 });\n\n  await clickStage(page, 2);",
 )
+source = source.replace(
+    "  await expect(page.getByRole('link', { name: /Baixar/ })).toBeVisible();",
+    "  await expect(page.locator('[data-download-export], [data-redownload-export]').first()).toBeVisible({ timeout: 30_000 });",
+)
 
 source = source.replace("[data-region-overlay]", "[data-overlay]")
 source = source.replace("[data-postage-mark]", "[data-stamp]")
