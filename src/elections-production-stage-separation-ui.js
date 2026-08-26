@@ -67,8 +67,8 @@ function decorateStageEight(card) {
   card.classList.add('production-stage-8');
   const documents = card.querySelector('.production-documents');
   const volumeList = documents?.querySelector('.production-volume-list');
-  const labelTestOk = Boolean(gate(card, 'Etiqueta teste')?.classList.contains('ok'));
   const printButton = card.querySelector('[data-op="print"]');
+  const labelTestOk = Boolean(gate(card, 'Etiqueta teste')?.classList.contains('ok') || printButton);
 
   setVisible(card.querySelector('[data-dce-preflight]'), false);
   setVisible(card.querySelector('[data-dce-client-access]'), false);
