@@ -29,6 +29,11 @@ function activateNativeView(view) {
   return true;
 }
 
+function requestDynamicView(view) {
+  ROOT?.dispatchEvent(new CustomEvent('agf:navigate-view', { detail: { view } }));
+  return activateNativeView(view);
+}
+
 function saveOperationStage(stage) {
   if (ROOT) ROOT.dataset.operationStage = String(stage || 0);
   try {
@@ -41,7 +46,7 @@ function activateNativeViewWhenReady(view, attempts = 80) {
   let remaining = attempts;
   const tryActivate = () => {
     if (dynamicViewRendered(view)) return;
-    activateNativeView(view);
+    requestDynamicView(view);
     remaining -= 1;
     if (remaining > 0 && !dynamicViewRendered(view)) setTimeout(tryActivate, 125);
   };
