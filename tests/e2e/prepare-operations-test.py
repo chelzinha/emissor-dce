@@ -20,6 +20,11 @@ source, count = re.subn(
 if count != 1:
     raise SystemExit('Não foi possível substituir o backend antigo do teste.')
 
+source = source.replace(
+    'page.locator(`[data-operation-stage="${number}"]`).click()',
+    'page.locator(`button[data-operation-stage="${number}"]`).click()',
+)
+
 old = """  await page.goto(APP_URL);\n  await expect(page.getByText('Passo a passo da operação')).toBeVisible();"""
 new = """  await page.goto(APP_URL);\n  await expect(page.locator('[data-operation-nav]')).toBeVisible({ timeout: 30_000 });"""
 if old not in source:
