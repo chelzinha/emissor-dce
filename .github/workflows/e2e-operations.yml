@@ -41,7 +41,6 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-          import re
 
           path = Path('tests/e2e/operations-flow.spec.mjs')
           source = path.read_text(encoding='utf-8')
@@ -78,64 +77,24 @@ jobs:
               "  await page.getByRole('button', { name: 'Gerar Declaração Simplificada' }).click();\n  const reloadedLocalLogin = page.locator('#local-login');\n  try {\n    await reloadedLocalLogin.waitFor({ state: 'visible', timeout: 8_000 });\n    await reloadedLocalLogin.click();\n  } catch {}\n  await expect(page.locator('[data-operation-nav]')).toBeVisible({ timeout: 30_000 });\n  if (await page.locator('[data-volumes=\"prod-active\"]').count() === 0) {\n    await page.locator('[data-operation-stage=\"7\"]').click();\n  }\n  await expect(page.locator('[data-volumes=\"prod-active\"]')).toBeVisible({ timeout: 30_000 });",
           )
 
-          documents_contract = """      case 'production.documents.test': {
-        const object = {
-          trackingCode: TRACKING,
-          service: 'SEDEX',
-          recipient: {
-            name: 'CLIENTE TESTE', document: '52998224725', documentType: 'CPF',
-            address: { street: 'RUA DOIS', number: '20', complement: '', district: 'CENTRO', city: 'FORTALEZA', uf: 'CE', zip: '60000001' },
-          },
-          sender: state.campaign.profile.sender,
-          senderIssues: [],
-          content: 'PANFLETOS E ADESIVOS DA CAMPANHA',
-          reference: '4817042',
-          accessKey: '',
-          protocol: '',
-          postal: { CODIGO_PP: '4817042' },
-          matrix: { stripe: 'IMP' },
-        };
-        return {
-          productionBatchId: 'prod-active',
-          portalReturnId: 'return-1',
-          documentMode: 'SIMPLIFIED_DECLARATION',
-          status: 'READY_FOR_UNIFIED_LABEL',
-          operation: {
-            id: state.campaign.id,
-            name: state.campaign.name,
-            cnpj: state.campaign.cnpj,
-            candidateName: state.campaign.candidateName,
-          },
-          volume: null,
-          gates: gates(),
-          senderIssues: [],
-          objects: [object],
-        };
-      }
-      case 'production.documents.volume': {
-        const testData = await action('production.documents.test');
-        return {
-          productionBatchId: 'prod-active',
-          portalReturnId: 'return-1',
-          documentMode: 'SIMPLIFIED_DECLARATION',
-          status: 'READY_FOR_UNIFIED_LABEL',
-          operation: testData.operation,
-          volume: state.volumes[0],
-          gates: gates(),
-          senderIssues: [],
-          objects: testData.objects,
-        };
-      }
-      case 'production.labelTest.data':"""
-          source, replacements = re.subn(
-              r"      case 'production\.documents\.test': return \{.*?      case 'production\.labelTest\.data':",
-              documents_contract,
-              source,
-              count=1,
-              flags=re.S,
+          source = source.replace(
+              "        trackingCode: TRACKING,\n        object: {",
+              "        status: 'READY_FOR_UNIFIED_LABEL',\n        operation: { id: state.campaign.id, name: state.campaign.name, cnpj: state.campaign.cnpj, candidateName: state.campaign.candidateName },\n        volume: null,\n        gates: gates(),\n        senderIssues: [],\n        objects: [{",
           )
-          if replacements != 1:
-              raise SystemExit('Contrato simulado dos documentos não foi localizado.')
+          source = source.replace(
+              "          },\n          content: 'PANFLETOS E ADESIVOS DA CAMPANHA'",
+              "          },\n          sender: state.campaign.profile.sender,\n          senderIssues: [],\n          content: 'PANFLETOS E ADESIVOS DA CAMPANHA'",
+          )
+          source = source.replace(
+              "        },\n        campaign: state.campaign,\n      };\n      case 'production.documents.volume': return {",
+              "        }],\n      };\n      case 'production.documents.volume': return {",
+          )
+          source = source.replace(
+              "        volume: state.volumes[0], objects: [(await action('production.documents.test')).object], campaign: state.campaign,",
+              "        status: 'READY_FOR_UNIFIED_LABEL', operation: { id: state.campaign.id, name: state.campaign.name, cnpj: state.campaign.cnpj, candidateName: state.campaign.candidateName }, volume: state.volumes[0], gates: gates(), senderIssues: [], objects: (await action('production.documents.test')).objects,",
+          )
+          if "objects: [(await action('production.documents.test')).object]" in source or "        object: {" in source:
+              raise SystemExit('Contrato simulado dos documentos não foi atualizado.')
 
           path.write_text(source, encoding='utf-8')
           PY
