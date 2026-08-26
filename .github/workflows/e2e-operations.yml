@@ -73,7 +73,7 @@ jobs:
           )
           source = source.replace(
               "  await page.getByRole('button', { name: 'Gerar Declaração Simplificada' }).click();\n  await expect(page.locator('[data-volumes=\"prod-active\"]')).toBeVisible({ timeout: 30_000 });",
-              "  await page.getByRole('button', { name: 'Gerar Declaração Simplificada' }).click();\n  const reloadedLocalLogin = page.locator('#local-login');\n  try {\n    await reloadedLocalLogin.waitFor({ state: 'visible', timeout: 8_000 });\n    await reloadedLocalLogin.click();\n  } catch {}\n  await expect(page.locator('[data-volumes=\"prod-active\"]')).toBeVisible({ timeout: 30_000 });",
+              "  await page.getByRole('button', { name: 'Gerar Declaração Simplificada' }).click();\n  const reloadedLocalLogin = page.locator('#local-login');\n  try {\n    await reloadedLocalLogin.waitFor({ state: 'visible', timeout: 8_000 });\n    await reloadedLocalLogin.click();\n  } catch {}\n  await expect(page.locator('[data-operation-nav]')).toBeVisible({ timeout: 30_000 });\n  if (await page.locator('[data-volumes=\"prod-active\"]').count() === 0) {\n    await page.locator('[data-operation-stage=\"7\"]').click();\n  }\n  await expect(page.locator('[data-volumes=\"prod-active\"]')).toBeVisible({ timeout: 30_000 });",
           )
           path.write_text(source, encoding='utf-8')
           PY
