@@ -12,6 +12,8 @@ export default defineConfig({
         eleicoes:resolve(rootDir,"eleicoes.html"),
         portal:resolve(rootDir,"portal.html"),
         portalCertificado:resolve(rootDir,"portal-certificado.html"),
+        homologacao:resolve(rootDir,"homologacao.html"),
+        portalHomologacao:resolve(rootDir,"portal-homologacao.html"),
       },
     },
   },
