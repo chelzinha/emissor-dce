@@ -8,5 +8,12 @@ test('documentos de produção ignoram lotes finalizados e históricos', () => {
   assert.match(source, /OPERATIONAL_BATCH_STATUSES/);
   assert.match(source, /isOperationalBatchStatus/);
   assert.match(source, /existing\?\.remove\(\)/);
-  assert.match(source, /if \(!isOperationalBatchStatus\(batchRecordStatus\(batch\)\)\) throw error/);
+  assert.match(
+    source,
+    /!isAssociationMismatch\(error\) \|\| !isOperationalBatchStatus\(batchRecordStatus\(batch\)\)/
+  );
+  assert.match(
+    source,
+    /if \(!isOperationalBatchStatus\(batchRecordStatus\(batch\)\)\) \{[\s\S]*host\.remove\(\)/
+  );
 });
