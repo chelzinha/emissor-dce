@@ -67,7 +67,8 @@ function decorateStageEight(card) {
   card.classList.add('production-stage-8');
   const documents = card.querySelector('.production-documents');
   const volumeList = documents?.querySelector('.production-volume-list');
-  const labelTestOk = Boolean(gate(card, 'Etiqueta teste')?.classList.contains('ok'));
+  const printButton = card.querySelector('[data-op="print"]');
+  const labelTestOk = Boolean(gate(card, 'Etiqueta teste')?.classList.contains('ok') || printButton);
 
   setVisible(card.querySelector('[data-dce-preflight]'), false);
   setVisible(card.querySelector('[data-dce-client-access]'), false);
@@ -78,12 +79,13 @@ function decorateStageEight(card) {
 
   if (!labelTestOk) {
     setVisible(volumeList, false);
-    setVisible(card.querySelector('[data-op="print"]'), false);
+    setVisible(printButton, false);
     note(documents, 'warn', '<strong>Impressão ainda bloqueada.</strong><span>Retorne à etapa 7 - Produção e conclua a auditoria do Data Matrix e a aprovação da etiqueta teste.</span>');
     return;
   }
 
   setVisible(volumeList, true);
+  setVisible(printButton, true);
   note(documents, 'info', '<strong>Arquivos finais de impressão.</strong><span>Gere cada bloco de impressão e registre as baixas de quantidade impressa. Quando o total estiver completo, avance para a etapa 9 - Entrega à operação.</span>');
 }
 

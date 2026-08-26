@@ -1,0 +1,80 @@
+name: Auditar fluxo operacional no navegador
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'eleicoes.html'
+      - 'tests/e2e/**'
+      - '.github/workflows/e2e-operations.yml'
+  workflow_dispatch:
+
+jobs:
+  browser-flow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Instalar Playwright sem alterar o projeto
+        run: |
+          npm install --no-save --package-lock=false @playwright/test@1.55.0
+          npx playwright install --with-deps chromium
+      - run: npm run build
+      - name: Iniciar aplicação local
+        run: |
+          npm run preview -- --host 0.0.0.0 > /tmp/agf-preview.log 2>&1 &
+          echo $! > /tmp/agf-preview.pid
+          for tentativa in $(seq 1 60); do
+            if curl -fsS http://localhost:4173/eleicoes.html >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/agf-preview.log
+          exit 1
+      - name: Preparar auditoria para o aplicativo atual
+        run: |
+          python tests/e2e/prepare-operations-test.py
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('tests/e2e/operations-flow.spec.mjs')
+          source = path.read_text(encoding='utf-8')
+          old = '  const backend = await installBackend(page);'
+          new = '''  const backend = await installBackend(page);
+          backend.state.matrixVerified = true;
+          const senderFixture = backend.state.campaign.profile.sender;
+          backend.state.campaign.profile.sender = {
+            ...senderFixture,
+            address: {
+              street: senderFixture.address,
+              number: senderFixture.number,
+              complement: senderFixture.complement,
+              district: senderFixture.district,
+              city: senderFixture.city,
+              uf: senderFixture.state,
+              zip: senderFixture.zip,
+            },
+          };'''
+          if old not in source:
+              raise SystemExit('Não foi possível preparar as condições sintéticas da produção.')
+          path.write_text(source.replace(old, new, 1), encoding='utf-8')
+          PY
+      - name: Percorrer o fluxo completo
+        run: npx playwright test tests/e2e/operations-flow.spec.mjs --workers=1 --repeat-each=1 --max-failures=1 --reporter=line
+      - name: Guardar evidências do navegador
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidencias-fluxo-operacional
+          path: test-results
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Mostrar log do servidor em caso de falha
+        if: failure()
+        run: cat /tmp/agf-preview.log || true
