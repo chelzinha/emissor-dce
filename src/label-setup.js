@@ -1,7 +1,9 @@
 export const DEFAULT_MATRIX_REGION = Object.freeze({ x: 0.365, y: 0.042, w: 0.245, h: 0.140 });
+export const DEFAULT_LABEL_FONT_SCALE = 0.8;
 
 function number(value, fallback = 0) {
-  const parsed = Number(value);
+  const normalized = typeof value === "string" ? value.replace(",", ".") : value;
+  const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
@@ -19,14 +21,17 @@ export function normalizeMatrixRegion(region) {
   return { x, y, w, h };
 }
 
+export function normalizeLabelFontScale(value) {
+  return clamp(number(value, DEFAULT_LABEL_FONT_SCALE), 0.8, 1.1);
+}
+
 export function normalizeLabelSetup(value) {
-  // O default de parametro so cobre undefined. currentLabelSetup nasce null,
-  // e o acesso a value.matrixRegion quebrava a renderizacao inteira da etapa 3.
   const source = value || {};
   return {
     matrixRegion: normalizeMatrixRegion(source.matrixRegion),
     postageMarkDataUrl: String(source.postageMarkDataUrl || ""),
     postageMarkName: String(source.postageMarkName || ""),
+    fontScale: normalizeLabelFontScale(source.fontScale),
     configuredAt: String(source.configuredAt || ""),
   };
 }
