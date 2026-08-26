@@ -47,7 +47,12 @@ jobs:
           new = """  await page.goto(APP_URL);\n  const localLogin = page.locator('#local-login');\n  try {\n    await localLogin.waitFor({ state: 'visible', timeout: 3_000 });\n    await localLogin.click();\n  } catch {}\n  await expect(page.locator('[data-operation-nav]')).toBeVisible({ timeout: 30_000 });"""
           if old not in source:
               raise SystemExit('Trecho de entrada local não localizado no teste.')
-          path.write_text(source.replace(old, new), encoding='utf-8')
+          source = source.replace(old, new)
+          source = source.replace(
+              "await expect(page.getByText('SEDEX_250_26.08.csv')).toBeVisible({ timeout: 30_000 });",
+              "await expect(page.getByRole('cell', { name: 'SEDEX_250_26.08.csv' })).toBeVisible({ timeout: 30_000 });",
+          )
+          path.write_text(source, encoding='utf-8')
           PY
       - name: Percorrer o fluxo completo três vezes
         run: npx playwright test tests/e2e/operations-flow.spec.mjs --workers=1 --repeat-each=3 --reporter=line
