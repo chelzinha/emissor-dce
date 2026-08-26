@@ -1,4 +1,5 @@
 import "./elections.css";
+import "./elections-cumulative-dashboard.css";
 import Papa from "papaparse";
 import { getUser, login, logout } from "@netlify/identity";
 import { dataAction, textDownload } from "./api.js";
@@ -10,6 +11,8 @@ const state = {
   user: null,
   campaigns: [],
   campaignId: "",
+  campaign: null,
+  tracking: null,
   view: "dashboard",
   addressLists: [],
   portalExports: [],
@@ -43,12 +46,128 @@ function formatNumber(value) {
   return new Intl.NumberFormat("pt-BR").format(Number(value || 0));
 }
 
+function formatDate(value) {
+  const [year, month, day] = String(value || "").slice(0, 10).split("-");
+  return year && month && day ? `${day}/${month}/${year}` : String(value || "");
+}
+
 function statusClass(status) {
   const text = String(status || "").toUpperCase();
   if (["READY", "ACTIVE", "FINISHED", "EXPORTED", "IN_PRODUCTION", "READY_FOR_UNIFIED_LABEL"].includes(text)) return "ok";
   if (["REVIEW", "UPLOADING", "CLEANING", "AWAITING_DCE_PREPARATION"].includes(text)) return "warn";
   if (["ERROR", "REJECTED", "BLOCKED"].includes(text)) return "bad";
   return "";
+}
+
+function emptyOperationMetrics() {
+  return {
+    addressReceived: 0,
+    addressCleaned: 0,
+    portalExported: 0,
+    portalReturned: 0,
+    labelsPac: 0,
+    labelsSedex: 0,
+    labelsPrinted: 0,
+    labelsHandedOff: 0,
+    dcePrepared: 0,
+    dceAuthorized: 0,
+    posted: 0,
+    delivered: 0,
+  };
+}
+
+function accumulatedOperationMetrics(rows) {
+  const metrics = emptyOperationMetrics();
+  (Array.isArray(rows) ? rows : []).forEach((row) => {
+    const quantity = Number(row.quantity || row.QUANTITY || 0);
+    const type = String(row.type || row.TYPE || "").toUpperCase();
+    const service = String(row.service || row.SERVICE || "").toUpperCase();
+    const metadata = row.metadata || row.METADATA_JSON || {};
+
+    if (type === "ADDRESS_LIST_RECEIVED") metrics.addressReceived += quantity;
+    if (type === "ADDRESS_CLEANING_COMPLETED") metrics.addressCleaned += quantity;
+    if (type === "PORTAL_CSV_EXPORTED") metrics.portalExported += quantity;
+    if (type === "PORTAL_RETURN_IMPORTED") metrics.portalReturned += quantity;
+    if (type === "LABEL_GENERATED" && service === "PAC") metrics.labelsPac += quantity;
+    if (type === "LABEL_GENERATED" && service === "SEDEX") metrics.labelsSedex += quantity;
+    if (type === "LABEL_PRINTED") metrics.labelsPrinted += quantity;
+    if (type === "LABEL_HANDOFF") metrics.labelsHandedOff += quantity;
+    if (type === "DCE_PREPARED" && String(metadata?.status || "") !== "AWAITING_DCE_PREPARATION") metrics.dcePrepared += quantity;
+    if (type === "DCE_AUTHORIZED") metrics.dceAuthorized += quantity;
+    if (type === "POSTING_COMPLETED") metrics.posted += quantity;
+    if (type === "TRACKING_DELIVERED") metrics.delivered += quantity;
+  });
+  return metrics;
+}
+
+function dailyOperationRows(rows) {
+  const groups = new Map();
+  const ensure = (date) => {
+    if (!groups.has(date)) {
+      groups.set(date, {
+        date,
+        generated: { pac: 0, sedex: 0 },
+        posted: { pac: 0, sedex: 0, hasBreakdown: false },
+      });
+    }
+    return groups.get(date);
+  };
+
+  (Array.isArray(rows) ? rows : []).forEach((row) => {
+    const date = String(row.occurredAt || row.OCCURRED_AT || row.createdAt || row.CREATED_AT || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+
+    const quantity = Number(row.quantity || row.QUANTITY || 0);
+    const type = String(row.type || row.TYPE || "").toUpperCase();
+    const service = String(row.service || row.SERVICE || "").toUpperCase();
+    const metadata = row.metadata || row.METADATA_JSON || {};
+    const group = ensure(date);
+
+    if (type === "LABEL_GENERATED") {
+      if (service === "PAC") group.generated.pac += quantity;
+      if (service === "SEDEX") group.generated.sedex += quantity;
+    }
+
+    if (type === "POSTING_COMPLETED") {
+      const metaPac = Number(metadata?.pac || metadata?.labelsPac || 0);
+      const metaSedex = Number(metadata?.sedex || metadata?.labelsSedex || 0);
+      if (metaPac || metaSedex) {
+        group.posted.pac += metaPac;
+        group.posted.sedex += metaSedex;
+        group.posted.hasBreakdown = true;
+      } else if (service === "PAC") {
+        group.posted.pac += quantity;
+        group.posted.hasBreakdown = true;
+      } else if (service === "SEDEX") {
+        group.posted.sedex += quantity;
+        group.posted.hasBreakdown = true;
+      }
+    }
+  });
+
+  return [...groups.values()]
+    .map((group) => {
+      const source = group.posted.hasBreakdown ? group.posted : group.generated;
+      const pac = Number(source.pac || 0);
+      const sedex = Number(source.sedex || 0);
+      return { date: group.date, pac, sedex, total: pac + sedex };
+    })
+    .filter((row) => row.total > 0)
+    .sort((a, b) => b.date.localeCompare(a.date));
+}
+
+function manualMetrics() {
+  const source = state.campaign?.profile?.manualMetrics || {};
+  const normalize = (value) => {
+    if (value === "" || value == null) return null;
+    const number = Number(value);
+    return Number.isFinite(number) && number >= 0 ? Math.round(number) : null;
+  };
+  return {
+    addressReceived: normalize(source.addressReceived),
+    addressCleaned: normalize(source.addressCleaned),
+    updatedAt: source.updatedAt || "",
+  };
 }
 
 function renderAuth() {
@@ -94,7 +213,7 @@ function shell(content) {
   app.innerHTML = `<div class="app-layout">
     <aside class="app-sidebar">
       <div class="app-brand"><div class="app-brand-mark">AGF</div><div><strong>Eleições 2026</strong><small>Operação postal</small></div></div>
-      <nav class="app-nav">${NAV.map(([id, label]) => `<button data-view="${id}" class="${state.view === id ? "active" : ""}">${h(label)}</button>`).join("")}</nav>
+      <nav class="app-nav">${NAV.map(([id, label]) => `<button type="button" data-view="${id}" class="${state.view === id ? "active" : ""}">${h(label)}</button>`).join("")}</nav>
       <div class="sidebar-foot">Modo conectado<br>Contingência local permanecerá independente.</div>
     </aside>
     <main class="app-main">
@@ -131,15 +250,16 @@ async function loadCampaigns() {
 async function refreshCampaignData() {
   if (!state.campaignId) return;
   const payload = { campaignId: state.campaignId };
-  const [addressLists, portalExports, portalReturns, productions, operations, dashboard] = await Promise.all([
+  const [addressLists, portalExports, portalReturns, productions, operations, campaign, tracking] = await Promise.all([
     dataAction("addressLists.list", payload),
     dataAction("portal.exports.list", payload),
     dataAction("portalReturns.list", payload),
     dataAction("production.list", payload),
     dataAction("operations.list", payload),
-    dataAction("dashboard.daily", payload),
+    dataAction("campaign.get", payload),
+    dataAction("tracking.summary", payload).catch(() => null),
   ]);
-  Object.assign(state, { addressLists, portalExports, portalReturns, productions, operations, dashboard });
+  Object.assign(state, { addressLists, portalExports, portalReturns, productions, operations, campaign, tracking, dashboard: null });
 }
 
 function requireCampaign() {
@@ -148,28 +268,150 @@ function requireCampaign() {
   return false;
 }
 
+function manualMetricsPanelMarkup(manual) {
+  const updated = manual.updatedAt ? `Última atualização: ${new Date(manual.updatedAt).toLocaleString("pt-BR")}` : "Os valores podem ser atualizados a qualquer momento.";
+  return `<section class="manual-metrics-panel" data-manual-metrics-panel>
+    <div class="manual-metrics-copy">
+      <strong>Indicadores manuais</strong>
+      <span>Use estes campos somente para números que não vêm automaticamente dos lotes.</span>
+      <small>${h(updated)}</small>
+    </div>
+    <button type="button" class="manual-metrics-toggle" data-manual-metrics-toggle aria-expanded="false">Atualizar indicadores manuais</button>
+    <form data-manual-metrics-form>
+      <label><span>Base recebida</span><input name="addressReceived" type="number" min="0" step="1" value="${manual.addressReceived ?? ""}" placeholder="Automático"></label>
+      <label><span>Higienizados</span><input name="addressCleaned" type="number" min="0" step="1" value="${manual.addressCleaned ?? ""}" placeholder="Automático"></label>
+      <button type="submit" class="primary">Salvar indicadores</button>
+    </form>
+  </section>`;
+}
+
 function dashboardView() {
   if (!requireCampaign()) return;
-  const m = state.dashboard?.metrics || {};
-  const metrics = [
-    ["Cadastros recebidos", m.addressReceived], ["Higienizados", m.addressCleaned], ["Enviados ao Portal", m.portalExported], ["Retornados do Portal", m.portalReturned],
-    ["PAC emitidos", m.labelsPac], ["SEDEX emitidos", m.labelsSedex], ["Etiquetas impressas", m.labelsPrinted], ["Entregues à operação", m.labelsHandedOff],
+
+  const automatic = accumulatedOperationMetrics(state.operations);
+  const manual = manualMetrics();
+  const metrics = {
+    ...automatic,
+    addressReceived: manual.addressReceived ?? automatic.addressReceived,
+    addressCleaned: manual.addressCleaned ?? automatic.addressCleaned,
+  };
+  metrics.posted = Math.max(metrics.posted, Number(state.tracking?.total?.posted || 0));
+  metrics.delivered = Math.max(metrics.delivered, Number(state.tracking?.total?.delivered || 0));
+
+  const dates = state.operations
+    .map((item) => String(item.occurredAt || item.OCCURRED_AT || item.createdAt || item.CREATED_AT || "").slice(0, 10))
+    .filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value))
+    .sort();
+  const period = dates.length
+    ? dates[0] === dates[dates.length - 1]
+      ? `Dados acumulados em ${formatDate(dates[0])}`
+      : `Período acumulado: ${formatDate(dates[0])} a ${formatDate(dates[dates.length - 1])}`
+    : "Nenhum período operacional registrado";
+
+  const metricCards = [
+    ["Cadastros recebidos", metrics.addressReceived, manual.addressReceived != null],
+    ["Higienizados", metrics.addressCleaned, manual.addressCleaned != null],
+    ["Enviados ao Portal", metrics.portalExported, false],
+    ["Retornados do Portal", metrics.portalReturned, false],
+    ["PAC emitidos", metrics.labelsPac, false],
+    ["SEDEX emitidos", metrics.labelsSedex, false],
+    ["Etiquetas impressas", metrics.labelsPrinted, false],
+    ["Entregues à operação", metrics.labelsHandedOff, false],
+    ["Postados", metrics.posted, false],
+    ["Entregues pelos Correios", metrics.delivered, false],
   ];
-  shell(`<div class="page">
-    ${pageHead("OPERAÇÃO DE HOJE", "Dashboard operacional", "Eventos reais alimentam os indicadores do dia sem digitação manual.")}
-    <div class="grid metrics">${metrics.map(([label, value]) => `<article class="card metric-card"><span>${h(label)}</span><strong>${formatNumber(value)}</strong><small>Hoje</small></article>`).join("")}</div>
+
+  const flowRows = [
+    ["Base recebida", metrics.addressReceived],
+    ["Higienizada", metrics.addressCleaned],
+    ["Portal", metrics.portalReturned],
+    ["Impressas", metrics.labelsPrinted],
+    ["Entregues", metrics.labelsHandedOff],
+    ["Postados", metrics.posted],
+  ];
+  const base = Math.max(1, Number(metrics.addressReceived || 0));
+
+  const daily = dailyOperationRows(state.operations);
+  const totals = daily.reduce((sum, row) => ({ pac: sum.pac + row.pac, sedex: sum.sedex + row.sedex, total: sum.total + row.total }), { pac: 0, sedex: 0, total: 0 });
+  const diary = daily.length
+    ? `<div class="daily-diary-table-wrap"><table class="daily-diary-table" aria-label="Diário acumulado da operação">
+        <thead><tr><th>Data</th><th>PAC</th><th>SEDEX</th><th>Total</th></tr></thead>
+        <tbody>${daily.map((row) => `<tr><td>${formatDate(row.date)}</td><td>${formatNumber(row.pac)}</td><td>${formatNumber(row.sedex)}</td><td><strong>${formatNumber(row.total)}</strong></td></tr>`).join("")}</tbody>
+        <tfoot><tr><th>TOTAL GERAL</th><th>${formatNumber(totals.pac)}</th><th>${formatNumber(totals.sedex)}</th><th>${formatNumber(totals.total)}</th></tr></tfoot>
+      </table></div>`
+    : '<div class="empty">Nenhum quantitativo diário registrado.</div>';
+
+  shell(`<div class="page" data-native-cumulative-dashboard>
+    ${pageHead("OPERAÇÃO ACUMULADA", "Dashboard operacional", "Resumo consolidado de tudo que está registrado na base desta operação.")}
+    <small class="cumulative-period">${h(period)}</small>
+    ${manualMetricsPanelMarkup(manual)}
+    <div class="grid metrics">${metricCards.map(([label, value, isManual]) => `<article class="card metric-card ${isManual ? "is-manual" : ""}"><span>${h(label)}</span><strong>${formatNumber(value)}</strong><small>${isManual ? "Informado manualmente" : "Acumulado automático"}</small></article>`).join("")}</div>
     <div class="grid two" style="margin-top:16px">
-      <section class="card"><div class="section-title"><div><h2>Fluxo atual</h2><p>Indicadores acumulados do dia.</p></div></div>
-        ${[["Base recebida",m.addressReceived],["Higienizada",m.addressCleaned],["Portal",m.portalReturned],["Impressas",m.labelsPrinted],["Entregues",m.labelsHandedOff]].map(([label,value]) => {
-          const base = Math.max(1, Number(m.addressReceived || 0)); const pct = Math.min(100, Math.round(Number(value || 0) / base * 100));
+      <section class="card"><div class="section-title"><div><h2>Fluxo acumulado</h2><p>Indicadores consolidados de todo o período da operação.</p></div></div>
+        ${flowRows.map(([label, value]) => {
+          const pct = Math.min(100, Math.round(Number(value || 0) / base * 100));
           return `<div class="progress-row"><span>${h(label)}</span><div class="progress-track"><i style="width:${pct}%"></i></div><strong>${formatNumber(value)}</strong></div>`;
         }).join("")}
       </section>
-      <section class="card"><div class="section-title"><div><h2>Diário da operação</h2><p>Últimos eventos registrados.</p></div></div>
-        <div class="timeline">${state.operations.slice(0,8).map((item) => `<div class="timeline-item"><time>${h(String(item.occurredAt || "").replace("T"," ").slice(0,16))}</time><strong>${h(item.type)}</strong><span>${formatNumber(item.quantity)}</span></div>`).join("") || '<div class="empty">Nenhum evento ainda.</div>'}</div>
-      </section>
+      <section class="card"><div class="section-title"><div><h2>Diário da operação</h2><p>Produção diária consolidada por serviço.</p></div></div>${diary}</section>
     </div>
   </div>`);
+
+  const panel = app.querySelector("[data-manual-metrics-panel]");
+  panel?.querySelector("[data-manual-metrics-toggle]")?.addEventListener("click", (event) => {
+    const expanded = panel.classList.toggle("is-open");
+    event.currentTarget.setAttribute("aria-expanded", String(expanded));
+    event.currentTarget.textContent = expanded ? "Fechar edição" : "Atualizar indicadores manuais";
+  });
+  panel?.querySelector("[data-manual-metrics-form]")?.addEventListener("submit", saveManualMetrics);
+}
+
+async function saveManualMetrics(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector("button[type='submit']");
+  const values = Object.fromEntries(new FormData(form));
+  const parse = (value) => {
+    if (String(value).trim() === "") return null;
+    const number = Number(value);
+    if (!Number.isFinite(number) || number < 0) throw new Error("Informe valores inteiros iguais ou maiores que zero.");
+    return Math.round(number);
+  };
+
+  button.disabled = true;
+  button.textContent = "Salvando…";
+  try {
+    const campaign = state.campaign || state.campaigns.find((item) => item.id === state.campaignId);
+    if (!campaign) throw new Error("Operação não encontrada.");
+    const profile = {
+      ...(campaign.profile || {}),
+      manualMetrics: {
+        ...(campaign.profile?.manualMetrics || {}),
+        addressReceived: parse(values.addressReceived),
+        addressCleaned: parse(values.addressCleaned),
+        updatedAt: new Date().toISOString(),
+        source: "DASHBOARD_MANUAL",
+      },
+    };
+    const updated = await dataAction("campaign.upsert", {
+      id: campaign.id,
+      name: campaign.name,
+      cnpj: campaign.cnpj,
+      candidateName: campaign.candidateName,
+      office: campaign.office,
+      status: campaign.status,
+      profile,
+    });
+    state.campaign = updated;
+    state.campaigns = state.campaigns.map((item) => item.id === updated.id ? updated : item);
+    toast("Indicadores manuais atualizados.", "success");
+    dashboardView();
+  } catch (error) {
+    toast(error.message, "error");
+  } finally {
+    button.disabled = false;
+    button.textContent = "Salvar indicadores";
+  }
 }
 
 function campaignsView() {
