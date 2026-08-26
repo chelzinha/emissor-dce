@@ -45,6 +45,7 @@ jobs:
 
           path = Path('tests/e2e/operations-flow.spec.mjs')
           source = path.read_text(encoding='utf-8')
+          source = source.replace('http://127.0.0.1:4173', 'http://localhost:4173')
           source = source.replace(
               "import { PDFDocument } from 'pdf-lib';",
               "import { PDFDocument } from 'pdf-lib';\nimport { installOperationsBackend } from './operations-backend.mjs';",
