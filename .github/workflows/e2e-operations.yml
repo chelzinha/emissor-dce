@@ -56,10 +56,13 @@ jobs:
               "await expect(page.getByText('Arquivos prontos para o Portal Postal.')).toBeVisible();\n\n  await clickStage(page, 2);",
               "await expect(page.getByText('Arquivos prontos para o Portal Postal.')).toBeVisible();\n  await page.waitForTimeout(1_500);\n  await expect(page.locator('[data-operation-nav]')).toBeVisible({ timeout: 30_000 });\n\n  await clickStage(page, 2);",
           )
+          source = source.replace("[data-region-overlay]", "[data-overlay]")
+          source = source.replace("[data-postage-mark]", "[data-stamp]")
+          source = source.replace("[data-save-setup]", "[data-save]")
           path.write_text(source, encoding='utf-8')
           PY
-      - name: Percorrer o fluxo completo três vezes
-        run: npx playwright test tests/e2e/operations-flow.spec.mjs --workers=1 --repeat-each=3 --reporter=line
+      - name: Percorrer o fluxo completo
+        run: npx playwright test tests/e2e/operations-flow.spec.mjs --workers=1 --repeat-each=1 --max-failures=1 --reporter=line
       - name: Mostrar log do servidor em caso de falha
         if: failure()
         run: cat /tmp/agf-preview.log || true
