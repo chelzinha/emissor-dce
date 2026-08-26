@@ -247,21 +247,40 @@ function routingIconDataUrl(service) {
   return dataUrl;
 }
 
-async function matrixCrops(portalReturnId, onProgress) {
+async function matrixCrops(portalReturnId, trackingCodes, onProgress) {
   const assets = await getPortalReturnAssets(portalReturnId);
   if (!assets?.pdfFiles?.length) throw new Error('Os PDFs originais do Portal não estão disponíveis neste navegador. Reimporte o retorno no computador da produção.');
   const region = assets.labelSetup?.matrixRegion;
   if (!region) throw new Error('A área do Data Matrix ainda não foi configurada para este retorno.');
-  const cacheKey = `${portalReturnId}:${JSON.stringify(region)}`;
+  const targets = [...new Set((trackingCodes || []).map(normalizeTracking).filter(Boolean))].sort();
+  if (!targets.length) throw new Error('Nenhum SRO foi informado para gerar as etiquetas.');
+  const cacheKey = `${portalReturnId}:${JSON.stringify(region)}:${targets.join("|")}`;
   if (CROP_CACHE.has(cacheKey)) return CROP_CACHE.get(cacheKey);
 
   const { pdfjsLib, ZXing } = await loadPostalVendors();
   const documents = await loadPdfDocuments(assets.pdfFiles, pdfjsLib);
-  const audit = await auditPdfDocuments(documents, ZXing, { region, onProgress });
+  let audit;
+  try {
+    audit = await auditPdfDocuments(documents, ZXing, {
+      region,
+      onProgress,
+      targetTrackingCodes: targets,
+    });
+  } finally {
+    for (const item of documents) {
+      try { await item.doc.destroy?.(); } catch {}
+    }
+  }
+  const textOnly = new Set(audit.audit
+    .filter((row) => row.origin === 'texto' && targets.includes(row.object))
+    .map((row) => row.object));
   const verified = await verifyCrops(audit.crops, ZXing);
-  const failed = verified.filter((row) => !row.ok);
-  if (failed.length) throw new Error(`${failed.length} Data Matrix falharam na releitura antes da geração.`);
-  CROP_CACHE.set(cacheKey, audit.crops);
+  const failed = verified.filter((row) => !row.ok && !textOnly.has(row.object));
+  const missing = targets.filter((code) => !audit.crops.has(code));
+  if (failed.length || missing.length) {
+    throw new Error(`${failed.length + missing.length} Data Matrix não puderam ser recuperados para a geração.`);
+  }
+  if (targets.length <= 10) CROP_CACHE.set(cacheKey, audit.crops);
   return audit.crops;
 }
 
@@ -515,7 +534,8 @@ async function buildPdf(data, onProgress) {
   const postageMarkDataUrl = assets?.labelSetup?.postageMarkDataUrl;
   if (!assets?.labelSetup?.matrixRegion || !postageMarkDataUrl) throw new Error('Configure a área do Data Matrix e a chancela antes de gerar etiquetas.');
 
-  const crops = await matrixCrops(data.portalReturnId, (progress) => onProgress?.(`Lendo Data Matrix: ${progress.processed || 0}/${progress.totalPages || 0}`));
+  const targetTrackingCodes = data.objects.map((object) => normalizeTracking(object.trackingCode));
+  const crops = await matrixCrops(data.portalReturnId, targetTrackingCodes, (progress) => onProgress?.(`Localizando Data Matrix: ${progress.processed || 0}/${progress.totalPages || 0}`));
   const pdf = await PDFDocument.create();
   const fonts = {
     regular: await pdf.embedFont(StandardFonts.Helvetica),

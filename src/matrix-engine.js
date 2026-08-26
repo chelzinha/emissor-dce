@@ -136,7 +136,10 @@ export async function auditPdfDocuments(pdfDocuments, ZXing, options = {}) {
   const region = options.region || DEFAULT_MATRIX_REGION;
   const renderScale = Number(options.renderScale || DEFAULT_RENDER_SCALE);
   const reinforcedScale = Number(options.reinforcedScale || renderScale * 1.5);
-  const keepCrops = options.keepCrops === true;
+  const requestedTargets = options.targetTrackingCodes || globalThis.__AGF_MATRIX_CROP_TARGETS__ || [];
+  const targetCodes = new Set([...requestedTargets].map((value) => String(value || "").replace(/\s/g, "").toUpperCase()).filter(Boolean));
+  const targeted = targetCodes.size > 0;
+  const keepCrops = options.keepCrops === true || targeted;
   const onProgress = typeof options.onProgress === "function" ? options.onProgress : () => {};
   const totalPages = pdfDocuments.reduce((sum, item) => sum + item.doc.numPages, 0);
   const crops = new Map();
@@ -153,8 +156,18 @@ export async function auditPdfDocuments(pdfDocuments, ZXing, options = {}) {
       try {
         const textContent = await page.getTextContent();
         const pageText = textContent.items.map((entry) => entry.str).join(" ").toUpperCase();
-        const textCodes = trackingCodesFromText(pageText);
+        const textCodes = [...new Set([
+          ...trackingCodesFromText(pageText),
+          ...trackingCodesFromText(pageText.replace(/\s/g, "")),
+        ])];
         const stripe = stripeFromTextContent(textContent, page.getViewport({ scale: 1 })) || "";
+        const targetOnPage = !targeted || textCodes.some((code) => targetCodes.has(code));
+
+        if (targeted && !targetOnPage) {
+          processed += 1;
+          onProgress({ processed, totalPages, object: null, origin: "", skipped: true });
+          continue;
+        }
 
         crop = await renderMatrixCrop(page, region, renderScale);
         let selectedCrop = crop;
@@ -182,7 +195,9 @@ export async function auditPdfDocuments(pdfDocuments, ZXing, options = {}) {
           }
           if (seenObjects.has(object)) diagnostics.duplicates.push({ object, fileName: item.name, page: pageNumber });
           seenObjects.add(object);
-          if (keepCrops) crops.set(object, selectedCrop.toDataURL("image/png"));
+          if (!targeted || targetCodes.has(object)) {
+            if (keepCrops) crops.set(object, selectedCrop.toDataURL("image/png"));
+          }
           audit.push({
             fileName: item.name,
             page: pageNumber,
