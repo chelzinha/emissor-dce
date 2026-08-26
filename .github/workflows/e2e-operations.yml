@@ -41,9 +41,24 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
 
           path = Path('tests/e2e/operations-flow.spec.mjs')
           source = path.read_text(encoding='utf-8')
+          source = source.replace(
+              "import { PDFDocument } from 'pdf-lib';",
+              "import { PDFDocument } from 'pdf-lib';\nimport { installOperationsBackend } from './operations-backend.mjs';",
+          )
+          source, count = re.subn(
+              r"function installBackend\(page\) \{.*?\n\}\n\nasync function clickStage",
+              "function installBackend(page) {\n  return installOperationsBackend(page, {\n    state: baseState(),\n    tracking: TRACKING,\n    header: CSV_HEADER,\n    row: CSV_ROW,\n  });\n}\n\nasync function clickStage",
+              source,
+              count=1,
+              flags=re.S,
+          )
+          if count != 1:
+              raise SystemExit('Não foi possível substituir o backend antigo do teste.')
+
           old = """  await page.goto(APP_URL);\n  await expect(page.getByText('Passo a passo da operação')).toBeVisible();"""
           new = """  await page.goto(APP_URL);\n  const localLogin = page.locator('#local-login');\n  try {\n    await localLogin.waitFor({ state: 'visible', timeout: 3_000 });\n    await localLogin.click();\n  } catch {}\n  await expect(page.locator('[data-operation-nav]')).toBeVisible({ timeout: 30_000 });"""
           if old not in source:
@@ -76,24 +91,6 @@ jobs:
               "  await page.getByRole('button', { name: 'Gerar Declaração Simplificada' }).click();\n  await expect(page.locator('[data-volumes=\"prod-active\"]')).toBeVisible({ timeout: 30_000 });",
               "  await page.getByRole('button', { name: 'Gerar Declaração Simplificada' }).click();\n  const reloadedLocalLogin = page.locator('#local-login');\n  try {\n    await reloadedLocalLogin.waitFor({ state: 'visible', timeout: 8_000 });\n    await reloadedLocalLogin.click();\n  } catch {}\n  await expect(page.locator('[data-operation-nav]')).toBeVisible({ timeout: 30_000 });\n  if (await page.locator('[data-volumes=\"prod-active\"]').count() === 0) {\n    await page.locator('[data-operation-stage=\"7\"]').click();\n  }\n  await expect(page.locator('[data-volumes=\"prod-active\"]')).toBeVisible({ timeout: 30_000 });",
           )
-
-          source = source.replace(
-              "        trackingCode: TRACKING,\n        object: {",
-              "        status: 'READY_FOR_UNIFIED_LABEL',\n        operation: { id: state.campaign.id, name: state.campaign.name, cnpj: state.campaign.cnpj, candidateName: state.campaign.candidateName },\n        volume: null,\n        gates: gates(),\n        senderIssues: [],\n        objects: [{",
-          )
-          source = source.replace(
-              "          },\n          content: 'PANFLETOS E ADESIVOS DA CAMPANHA'",
-              "          },\n          sender: state.campaign.profile.sender,\n          senderIssues: [],\n          content: 'PANFLETOS E ADESIVOS DA CAMPANHA'",
-          )
-          source = source.replace(
-              "        },\n        campaign: state.campaign,\n      };\n      case 'production.documents.volume': return {",
-              "        }],\n      };\n      case 'production.documents.volume': return {",
-          )
-          source = source.replace(
-              "        volume: state.volumes[0], objects: [(await action('production.documents.test')).object], campaign: state.campaign,",
-              "        status: 'READY_FOR_UNIFIED_LABEL', operation: { id: state.campaign.id, name: state.campaign.name, cnpj: state.campaign.cnpj, candidateName: state.campaign.candidateName }, volume: state.volumes[0], gates: gates(), senderIssues: [], objects: (await action('production.documents.test')).objects,",
-          )
-
           source = source.replace(
               "  await expect(activeCard.locator('[data-op=\"test\"]')).toBeVisible({ timeout: 30_000 });\n  await activeCard.locator('[data-op=\"test\"]').click();\n  await expect(page.locator('[data-label-test-dialog]')).toBeVisible();\n  await page.locator('[data-label-test-input]').fill(TRACKING);\n  await page.locator('[data-label-test-confirm]').click();\n  await expect(page.locator('[data-label-test-dialog]')).toHaveCount(0);",
               "  await expect(activeCard.locator('[data-op=\"test\"]')).toBeVisible({ timeout: 30_000 });\n  await activeCard.locator('[data-op=\"test\"]').click();\n  const labelTestModal = page.locator('#label-test-stability-modal');\n  await expect(labelTestModal).toBeVisible();\n  await labelTestModal.locator('input[name=\"tracking\"]').fill(TRACKING);\n  await labelTestModal.getByRole('button', { name: 'Confirmar leitura' }).click();\n  await expect(labelTestModal).toHaveCount(0);",
