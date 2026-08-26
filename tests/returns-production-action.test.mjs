@@ -6,6 +6,7 @@ const modeFlow = fs.readFileSync(new URL('../src/elections-document-mode-ui.js',
 const dceFlow = fs.readFileSync(new URL('../src/elections-production-dce-ui.js', import.meta.url), 'utf8');
 const agencyHtml = fs.readFileSync(new URL('../eleicoes.html', import.meta.url), 'utf8');
 const clientHtml = fs.readFileSync(new URL('../portal.html', import.meta.url), 'utf8');
+const tempClientHtml = fs.readFileSync(new URL('../portal-certificado.html', import.meta.url), 'utf8');
 
 test('retorno pronto oferece as duas modalidades documentais', () => {
   assert.match(modeFlow, /Gerar Declaração Simplificada/);
@@ -22,7 +23,7 @@ test('retorno em produção oferece continuação em vez de nova criação', () 
   assert.match(modeFlow, /continueToProduction/);
 });
 
-test('painel da agência mantém preflight DC-e e identifica o portal público temporário', () => {
+test('painel da agência mantém preflight DC-e e identifica a validação pública separada', () => {
   assert.match(agencyHtml, /elections-document-mode-ui\.js/);
   assert.match(agencyHtml, /elections-production-dce-ui\.js/);
   assert.doesNotMatch(agencyHtml, /elections-release-simplified\.js/);
@@ -32,8 +33,10 @@ test('painel da agência mantém preflight DC-e e identifica o portal público t
   assert.doesNotMatch(dceFlow, /Abrir Portal do Cliente/);
 });
 
-test('link do usuário final aponta temporariamente para validação pública de CNPJ', () => {
-  assert.match(clientHtml, /client-cnpj-temp\.js/);
-  assert.doesNotMatch(clientHtml, /client-portal\.js/);
-  assert.doesNotMatch(clientHtml, /client-postal-simulator\.js/);
+test('portal autenticado e validação pública permanecem em rotas separadas', () => {
+  assert.match(clientHtml, /client-portal\.js/);
+  assert.match(clientHtml, /client-finance-highlights\.js/);
+  assert.doesNotMatch(clientHtml, /client-cnpj-temp\.js/);
+  assert.match(tempClientHtml, /client-cnpj-temp\.js/);
+  assert.doesNotMatch(tempClientHtml, /client-portal\.js/);
 });
