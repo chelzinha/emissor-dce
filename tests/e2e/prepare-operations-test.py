@@ -21,14 +21,14 @@ if count != 1:
     raise SystemExit('Não foi possível substituir o backend antigo do teste.')
 
 old = """  await page.goto(APP_URL);\n  await expect(page.getByText('Passo a passo da operação')).toBeVisible();"""
-new = """  await page.goto(APP_URL);\n  const localLogin = page.locator('#local-login');\n  await localLogin.waitFor({ state: 'visible', timeout: 10_000 });\n  await localLogin.click();\n  await expect(page.locator('[data-operation-nav]')).toBeVisible({ timeout: 30_000 });"""
+new = """  await page.goto(APP_URL);\n  await expect(page.locator('[data-operation-nav]')).toBeVisible({ timeout: 30_000 });"""
 if old not in source:
     raise SystemExit('Trecho de entrada local não localizado no teste.')
 source = source.replace(old, new)
 
 source = source.replace(
     "  await page.locator('#base-file').setInputFiles(file);\n  await expect(page.getByText('SEDEX_250_26.08.csv')).toBeVisible({ timeout: 30_000 });\n  await page.getByRole('button', { name: 'Preparar base' }).click();",
-    "  await page.locator('#base-file').setInputFiles(file);\n  await page.getByRole('button', { name: 'Importar base completa' }).click();\n  const importedLogin = page.locator('#local-login');\n  await importedLogin.waitFor({ state: 'visible', timeout: 30_000 });\n  await importedLogin.click();\n  await expect(page.locator('[data-operation-nav]')).toBeVisible({ timeout: 30_000 });\n  await clickStage(page, 1);\n  await expect(page.getByText('SEDEX_250_26.08.csv', { exact: true })).toBeVisible({ timeout: 30_000 });",
+    "  await page.locator('#base-file').setInputFiles(file);\n  await page.getByRole('button', { name: 'Importar base completa' }).click();\n  await expect(page.locator('[data-operation-nav]')).toBeVisible({ timeout: 30_000 });\n  await clickStage(page, 1);\n  await expect(page.getByText('SEDEX_250_26.08.csv', { exact: true })).toBeVisible({ timeout: 30_000 });",
 )
 
 source = source.replace(
@@ -53,7 +53,7 @@ source = source.replace(
 )
 source = source.replace(
     "  await page.getByRole('button', { name: 'Gerar Declaração Simplificada' }).click();\n  await expect(page.locator('[data-volumes=\"prod-active\"]')).toBeVisible({ timeout: 30_000 });",
-    "  await page.getByRole('button', { name: 'Gerar Declaração Simplificada' }).click();\n  const productionLogin = page.locator('#local-login');\n  if (await productionLogin.count()) {\n    await productionLogin.click();\n    await expect(page.locator('[data-operation-nav]')).toBeVisible({ timeout: 30_000 });\n  }\n  if (await page.locator('[data-volumes=\"prod-active\"]').count() === 0) {\n    await clickStage(page, 7);\n  }\n  await expect(page.locator('[data-volumes=\"prod-active\"]')).toBeVisible({ timeout: 30_000 });",
+    "  await page.getByRole('button', { name: 'Gerar Declaração Simplificada' }).click();\n  await expect(page.locator('[data-operation-nav]')).toBeVisible({ timeout: 30_000 });\n  if (await page.locator('[data-volumes=\"prod-active\"]').count() === 0) {\n    await clickStage(page, 7);\n  }\n  await expect(page.locator('[data-volumes=\"prod-active\"]')).toBeVisible({ timeout: 30_000 });",
 )
 source = source.replace(
     "  await expect(activeCard.locator('[data-op=\"test\"]')).toBeVisible({ timeout: 30_000 });\n  await activeCard.locator('[data-op=\"test\"]').click();\n  await expect(page.locator('[data-label-test-dialog]')).toBeVisible();\n  await page.locator('[data-label-test-input]').fill(TRACKING);\n  await page.locator('[data-label-test-confirm]').click();\n  await expect(page.locator('[data-label-test-dialog]')).toHaveCount(0);",
