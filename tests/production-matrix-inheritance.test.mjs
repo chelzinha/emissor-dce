@@ -34,3 +34,8 @@ test('ação de Data Matrix preserva a etapa de produção mesmo após recarga',
   assert.match(recovery, /view: 'production'/);
   assert.match(recovery, /stopImmediatePropagation/);
 });
+
+test('documentos de produção são remontados após a auditoria herdada', () => {
+  assert.match(recovery, /querySelector\('\.production-documents'\)\?\.remove\(\)/);
+  assert.match(recovery, /refreshGates\(card\)/);
+});
