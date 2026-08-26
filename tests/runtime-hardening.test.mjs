@@ -25,9 +25,9 @@ test("rotas API usam os paths declarados pelas Functions sem rewrite conflitante
   assert.match(read("netlify/functions/portal-login.mjs"), /path: "\/api\/portal\/login"/);
 });
 
-test("QR Code autorizado e persistido e reutilizado na etiqueta", () => {
+test("QR Code autorizado é persistido e reutilizado na etiqueta", () => {
   assert.match(read("apps-script/Config.gs"), /'QR_CODE'/);
   assert.match(read("apps-script/Batches.gs"), /QR_CODE: result\.qrCode/);
   assert.match(read("apps-script/ProductionDocuments.gs"), /qrCode: String\(dce\.QR_CODE/);
-  assert.match(read("src/production-label-generator.js"), /d\.qrCode \|\|/);
+  assert.match(read("src/production-label-layout-v13.js"), /dce\.qrCode \|\|/);
 });
