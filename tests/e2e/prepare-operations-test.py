@@ -22,7 +22,7 @@ if count != 1:
 
 source, stage_count = re.subn(
     r"async function clickStage\(page, number\) \{.*?\n\}",
-    "async function clickStage(page, number) {\n  const button = page.locator(`button[data-operation-stage=\"${number}\"]`);\n  await button.click();\n  if (number === 10 || number === 11) {\n    const view = number === 10 ? 'tracking' : 'reports';\n    const heading = number === 10 ? 'Rastreamento e fechamento' : 'Fechamento operacional';\n    const nativeButton = page.locator(`.app-nav > button[data-view=\"${view}\"]`);\n    await expect(nativeButton).toHaveCount(1, { timeout: 30_000 });\n    if (!await nativeButton.evaluate((node) => node.classList.contains('active'))) {\n      await nativeButton.evaluate((node) => node.click());\n    }\n    await expect(page.getByRole('heading', { name: heading })).toBeVisible({ timeout: 30_000 });\n    return;\n  }\n  await expect(button).toHaveClass(/active/);\n}",
+    "async function clickStage(page, number) {\n  const button = page.locator(`button[data-operation-stage=\"${number}\"]`);\n  await button.click();\n  if (number === 10 || number === 11) {\n    const view = number === 10 ? 'tracking' : 'reports';\n    const heading = number === 10 ? 'Acompanhamento' : 'Relatórios';\n    const nativeButton = page.locator(`.app-nav > button[data-view=\"${view}\"]`);\n    await expect(nativeButton).toHaveCount(1, { timeout: 30_000 });\n    if (!await nativeButton.evaluate((node) => node.classList.contains('active'))) {\n      await nativeButton.evaluate((node) => node.click());\n    }\n    await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible({ timeout: 30_000 });\n    return;\n  }\n  await expect(button).toHaveClass(/active/);\n}",
     source,
     count=1,
     flags=re.S,
@@ -89,6 +89,14 @@ source = source.replace(
     "  await page.locator('[data-delivery-batch][value=\"prod-active\"]').check();",
     "  const deliveryBatch = page.locator('[data-delivery-batch][value=\"prod-active\"]');\n  await deliveryBatch.evaluate((input) => {\n    input.checked = true;\n    input.dispatchEvent(new Event('change', { bubbles: true }));\n  });\n  await expect(deliveryBatch).toBeChecked();",
 )
+source = source.replace(
+    "page.getByRole('heading', { name: 'Rastreamento e fechamento' })",
+    "page.getByRole('heading', { name: 'Acompanhamento', exact: true })",
+)
+source = source.replace(
+    "page.getByRole('heading', { name: 'Fechamento operacional' })",
+    "page.getByRole('heading', { name: 'Relatórios', exact: true })",
+)
 
 if "data-label-test-dialog" in source:
     raise SystemExit('Fluxo antigo da validação do SRO ainda está presente.')
@@ -96,3 +104,13 @@ if "name: 'Preparar base'" in source:
     raise SystemExit('Fluxo antigo de preparação da base ainda está presente.')
 
 path.write_text(source, encoding='utf-8')
+
+backend_path = Path('tests/e2e/operations-backend.mjs')
+backend_source = backend_path.read_text(encoding='utf-8')
+backend_marker = "      case 'tracking.summary': return {"
+backend_replacement = """      case 'tracking.events.list': return [];
+      case 'tracking.geo.summary': return { rows: [], totalCities: 0 };
+      case 'tracking.summary': return {"""
+if backend_marker not in backend_source:
+    raise SystemExit('Não foi possível completar o backend sintético do rastreamento.')
+backend_path.write_text(backend_source.replace(backend_marker, backend_replacement, 1), encoding='utf-8')
