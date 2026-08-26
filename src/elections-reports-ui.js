@@ -132,6 +132,22 @@ function mount() {
   });
 }
 
+function activateReportsView() {
+  const nav = ROOT?.querySelector('.app-nav');
+  if (!nav) return;
+  mount();
+  const button = nav.querySelector('[data-view="reports"]');
+  reportsActive = true;
+  nav.querySelectorAll('button').forEach((item) => item.classList.toggle('active', item === button));
+  render();
+}
+
+ROOT?.addEventListener('agf:navigate-view', (event) => {
+  const view = event.detail?.view;
+  if (view === 'reports') activateReportsView();
+  else if (view) reportsActive = false;
+});
+
 const observer = new MutationObserver(() => queueMicrotask(mount));
 if (ROOT) observer.observe(ROOT, { childList: true, subtree: true });
 mount();
