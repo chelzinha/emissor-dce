@@ -4,7 +4,7 @@
 [build.environment]
   NODE_VERSION = "22"
 [context.deploy-preview]
-  command = "node --test tests/[a-m]*.test.mjs && npm run build"
+  command = "node --test tests/[n-z]*.test.mjs && npm run build"
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"
