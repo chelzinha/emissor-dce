@@ -4,9 +4,18 @@ const DYNAMIC_STAGE_VIEWS = Object.freeze({
   10: 'tracking',
   11: 'reports',
 });
+const DYNAMIC_VIEW_PAGES = Object.freeze({
+  tracking: '.tracking-page',
+  reports: '.reports-page',
+});
 
 function nativeViewButton(view) {
   return ROOT?.querySelector(`.app-nav > button[data-view="${CSS.escape(String(view || ''))}"]`);
+}
+
+function dynamicViewRendered(view) {
+  const selector = DYNAMIC_VIEW_PAGES[view];
+  return selector ? Boolean(ROOT?.querySelector(selector)) : Boolean(nativeViewButton(view)?.classList.contains('active'));
 }
 
 function activateNativeView(view) {
@@ -28,12 +37,13 @@ function saveOperationStage(stage) {
   } catch {}
 }
 
-function activateNativeViewWhenReady(view, attempts = 200) {
+function activateNativeViewWhenReady(view, attempts = 80) {
   let remaining = attempts;
   const tryActivate = () => {
-    if (activateNativeView(view)) return;
+    if (dynamicViewRendered(view)) return;
+    activateNativeView(view);
     remaining -= 1;
-    if (remaining > 0) setTimeout(tryActivate, 50);
+    if (remaining > 0 && !dynamicViewRendered(view)) setTimeout(tryActivate, 125);
   };
   setTimeout(tryActivate, 0);
 }
