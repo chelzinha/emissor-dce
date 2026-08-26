@@ -4,6 +4,27 @@ import { getPortalReturnAssets } from './portal-assets.js';
 import { isLabelSetupComplete } from './label-setup.js';
 
 const ROOT = document.querySelector('#elections-app');
+const OPERATIONAL_BATCH_STATUSES = new Set([
+  'AWAITING_DCE_PREPARATION',
+  'DCE_PREPARED',
+  'DCE_RESERVED',
+  'DCE_PARTIAL',
+  'READY_FOR_UNIFIED_LABEL',
+  'IN_PRODUCTION',
+  'PREPARED',
+  'PROCESSING',
+  'PARTIAL',
+]);
+const STATUS_ALIASES = Object.freeze({
+  'EM PRODUÇÃO': 'IN_PRODUCTION',
+  'EM PRODUCAO': 'IN_PRODUCTION',
+  'FINALIZADO': 'FINISHED',
+  'FINALIZADA': 'FINISHED',
+  'CONCLUÍDO': 'COMPLETED',
+  'CONCLUIDO': 'COMPLETED',
+  'ENCERRADO': 'CLOSED',
+  'ENTREGUE': 'DELIVERED',
+});
 let generatorPromise;
 
 function loadGenerator() {
@@ -19,6 +40,28 @@ function h(value) {
 
 function digits(value) {
   return String(value ?? '').replace(/\D/g, '');
+}
+
+function normalizeBatchStatus(value) {
+  const raw = String(value || '').trim().toUpperCase();
+  return STATUS_ALIASES[raw] || raw;
+}
+
+function batchRecordStatus(batch) {
+  return normalizeBatchStatus(batch?.STATUS || batch?.status);
+}
+
+function cardBatchStatus(card) {
+  const chip = card?.querySelector('.status');
+  return normalizeBatchStatus(
+    card?.dataset.productionStatus
+      || chip?.dataset.statusCode
+      || chip?.textContent
+  );
+}
+
+function isOperationalBatchStatus(value) {
+  return OPERATIONAL_BATCH_STATUSES.has(normalizeBatchStatus(value));
 }
 
 function campaignId() {
@@ -64,7 +107,7 @@ async function gatesWithRecovery(batchId, batch) {
       productionBatchId: batchId,
     });
   } catch (error) {
-    if (!isAssociationMismatch(error)) throw error;
+    if (!isAssociationMismatch(error) || !isOperationalBatchStatus(batchRecordStatus(batch))) throw error;
     const portalReturnId = batchPortalReturnId(batch);
     const documentMode = batchDocumentMode(batch);
     if (!portalReturnId || !documentMode) throw error;
@@ -210,6 +253,10 @@ async function loadControls(card, batchId) {
     const batches = await dataAction('production.list', { campaignId: campaignId() });
     const batch = batches.find((row) => String(row.ID || row.id) === String(batchId));
     if (!batch) throw new Error('Lote de produção não localizado.');
+    if (!isOperationalBatchStatus(batchRecordStatus(batch))) {
+      host.remove();
+      return;
+    }
 
     const [gates, volumes, campaign] = await Promise.all([
       gatesWithRecovery(batchId, batch),
@@ -338,9 +385,14 @@ async function generateVolume(card, batchId, volumeId) {
 
 function mount() {
   productionCards().forEach((card) => {
+    const existing = card.querySelector('.production-documents');
+    if (!isOperationalBatchStatus(cardBatchStatus(card))) {
+      existing?.remove();
+      return;
+    }
     const button = card.querySelector('[data-volumes]');
     const batchId = button?.dataset.volumes;
-    if (!batchId || card.querySelector('.production-documents')) return;
+    if (!batchId || existing) return;
     const host = document.createElement('div');
     host.className = 'production-documents';
     host.innerHTML = '<div class="production-documents-head"><div><strong>Documentos de produção</strong><small>Carregando disponibilidade...</small></div></div><div class="production-documents-actions"></div><div class="production-volume-list"></div><div class="production-documents-status"></div>';
