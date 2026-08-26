@@ -1,0 +1,35 @@
+name: Aplicar correção da etiqueta teste
+
+on:
+  push:
+    branches:
+      - fix/label-test-loop
+    paths:
+      - scripts/apply-label-test-loop.mjs
+      - .github/workflows/apply-label-test-loop.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/label-test-loop
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Aplicar alterações
+        run: node scripts/apply-label-test-loop.mjs
+      - name: Remover arquivos temporários
+        run: rm scripts/apply-label-test-loop.mjs .github/workflows/apply-label-test-loop.yml
+      - name: Commitar correção
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Corrigir loop e geração da etiqueta teste"
+          git push origin HEAD:fix/label-test-loop
