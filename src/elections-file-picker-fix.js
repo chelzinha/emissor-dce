@@ -20,6 +20,8 @@
 
 const STYLE_ID = 'agf-file-picker-fix-style';
 const CAMPOS = [
+  '#base-file',
+  '.upload-box input[type="file"]',
   '#portal-return-csv',
   '#portal-return-pdfs',
   '.label-setup-modal [data-stamp]',
@@ -40,7 +42,7 @@ function ensureStyle() {
        Qualquer tentativa de esconder o input e substitui-lo por um botao
        depende de input.click() ou showPicker(), e ambos podem ser recusados
        em silencio. Este caminho nunca falha. */
-    .agf-native-file-visible{display:inline-block!important;position:static!important;opacity:1!important;width:auto!important;height:auto!important;max-width:100%;pointer-events:auto!important;clip:auto!important;font-size:12px}
+    .agf-native-file-visible{display:inline-block!important;position:relative!important;z-index:50!important;opacity:1!important;width:auto!important;height:auto!important;max-width:100%;pointer-events:auto!important;clip:auto!important;font-size:12px}
     .agf-file-picker{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:10px 0 8px;position:relative;z-index:20}
     .agf-file-picker strong{min-width:0;max-width:100%;font-size:11px;color:#526176;font-weight:750;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .label-stamp-upload .agf-file-picker{display:grid;grid-template-columns:max-content minmax(0,1fr);margin:0 0 7px}
@@ -49,7 +51,9 @@ function ensureStyle() {
   document.head.appendChild(style);
 }
 
-
+function containPickerEvent(event) {
+  event.stopPropagation();
+}
 
 function decorateInput(input) {
   if (!input || input.dataset.agfPickerReady === '1') return;
@@ -59,9 +63,12 @@ function decorateInput(input) {
   input.classList.add('agf-native-file-visible');
   input.removeAttribute('aria-hidden');
   input.removeAttribute('tabindex');
-  // Contem o clique: sem isso ele sobe ate um [data-view] e dispara
-  // app.innerHTML, que destroi o input antes de a janela abrir.
-  input.addEventListener('click', (event) => event.stopPropagation());
+  input.disabled = false;
+  // Contem toda a sequencia do clique: sem isso um listener ancestral pode
+  // recriar o DOM antes de o navegador abrir a janela nativa de arquivos.
+  input.addEventListener('pointerdown', containPickerEvent);
+  input.addEventListener('mousedown', containPickerEvent);
+  input.addEventListener('click', containPickerEvent);
 }
 
 function mount() {
