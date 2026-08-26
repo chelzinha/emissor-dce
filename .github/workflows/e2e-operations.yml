@@ -52,6 +52,10 @@ jobs:
               "await expect(page.getByText('SEDEX_250_26.08.csv')).toBeVisible({ timeout: 30_000 });",
               "await expect(page.getByRole('cell', { name: 'SEDEX_250_26.08.csv' })).toBeVisible({ timeout: 30_000 });",
           )
+          source = source.replace(
+              "await expect(page.getByText('Arquivos prontos para o Portal Postal.')).toBeVisible();\n\n  await clickStage(page, 2);",
+              "await expect(page.getByText('Arquivos prontos para o Portal Postal.')).toBeVisible();\n  await page.waitForTimeout(1_500);\n  await expect(page.locator('[data-operation-nav]')).toBeVisible({ timeout: 30_000 });\n\n  await clickStage(page, 2);",
+          )
           path.write_text(source, encoding='utf-8')
           PY
       - name: Percorrer o fluxo completo três vezes
