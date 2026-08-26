@@ -96,6 +96,13 @@ jobs:
           if "objects: [(await action('production.documents.test')).object]" in source or "        object: {" in source:
               raise SystemExit('Contrato simulado dos documentos não foi atualizado.')
 
+          source = source.replace(
+              "  await expect(activeCard.locator('[data-op=\"test\"]')).toBeVisible({ timeout: 30_000 });\n  await activeCard.locator('[data-op=\"test\"]').click();\n  await expect(page.locator('[data-label-test-dialog]')).toBeVisible();\n  await page.locator('[data-label-test-input]').fill(TRACKING);\n  await page.locator('[data-label-test-confirm]').click();\n  await expect(page.locator('[data-label-test-dialog]')).toHaveCount(0);",
+              "  await expect(activeCard.locator('[data-op=\"test\"]')).toBeVisible({ timeout: 30_000 });\n  page.once('dialog', (dialog) => dialog.accept(TRACKING));\n  await activeCard.locator('[data-op=\"test\"]').click();",
+          )
+          if "data-label-test-dialog" in source:
+              raise SystemExit('Fluxo antigo da validação do SRO ainda está presente.')
+
           path.write_text(source, encoding='utf-8')
           PY
       - name: Percorrer o fluxo completo
