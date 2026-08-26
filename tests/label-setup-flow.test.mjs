@@ -7,6 +7,7 @@ const portalReturnService = fs.readFileSync(new URL('../src/portal-return-servic
 const productionOps = fs.readFileSync(new URL('../src/elections-production-ops-ui.js', import.meta.url), 'utf8');
 const productionDocs = fs.readFileSync(new URL('../src/elections-production-documents-ui.js', import.meta.url), 'utf8');
 const generator = fs.readFileSync(new URL('../src/production-label-generator.js', import.meta.url), 'utf8');
+const layout = fs.readFileSync(new URL('../src/production-label-layout-v13.js', import.meta.url), 'utf8');
 const assets = fs.readFileSync(new URL('../src/portal-assets.js', import.meta.url), 'utf8');
 
 test('retorno exige configuracao visual antes da auditoria', () => {
@@ -31,17 +32,18 @@ test('producao reaproveita regiao manual e bloqueia ate haver chancela', () => {
 });
 
 test('etiqueta final usa a chancela real e nao o placeholder antigo', () => {
-  assert.match(generator, /drawPostageMark/);
   assert.match(generator, /postageMarkDataUrl/);
-  assert.match(generator, /assets\.labelSetup\?\.matrixRegion/);
-  assert.doesNotMatch(generator, /'CHANCELA'/);
-  assert.doesNotMatch(generator, /'CLIENTE'/);
+  assert.match(generator, /assets\?\.labelSetup\?\.matrixRegion/);
+  assert.match(layout, /fitImage\(page, pdf, postageMarkDataUrl/);
+  assert.doesNotMatch(layout, /'CHANCELA'/);
+  assert.doesNotMatch(layout, /'CLIENTE'/);
 });
 
-test('producao recupera associacoes quebradas antes de exibir os gates', () => {
+test('producao recupera associacoes quebradas somente para lote operacional', () => {
   assert.match(productionOps, /gatesWithRecovery/);
   assert.match(productionOps, /production\.prepare/);
   assert.match(productionOps, /Quantidade de objetos do lote diverge do total registrado/);
+  assert.match(productionOps, /isOperationalBatchStatus\(batchRecordStatus\(batch\)\)/);
   assert.match(productionDocs, /gatesWithRecovery/);
 });
 

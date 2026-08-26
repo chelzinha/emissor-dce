@@ -13,7 +13,7 @@ test('geração busca apenas Data Matrix dos SROs necessários', () => {
   assert.match(matrix, /targeted && !targetOnPage/);
   assert.match(generator, /matrixCrops\(portalReturnId, trackingCodes, onProgress\)/);
   assert.match(generator, /targetTrackingCodes: targets/);
-  assert.match(generator, /targets\.join\("\\|"\)/);
+  assert.match(generator, /targets\.join\(['"]\|['"]\)/);
   assert.match(generator, /origin === 'texto'/);
 });
 

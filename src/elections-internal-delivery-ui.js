@@ -6,6 +6,29 @@ const STAGE_KEY = 'AGF_OPERATION_STAGE_FULL_1_11';
 let renderToken = 0;
 let deliveryGeneratorPromise;
 
+const DELIVERY_OPERATIONAL_STATUSES = new Set([
+  'AWAITING_DCE_PREPARATION',
+  'DCE_PREPARED',
+  'DCE_RESERVED',
+  'DCE_PARTIAL',
+  'READY_FOR_UNIFIED_LABEL',
+  'IN_PRODUCTION',
+  'PREPARED',
+  'PROCESSING',
+  'PARTIAL',
+]);
+
+const DELIVERY_STATUS_ALIASES = Object.freeze({
+  'EM PRODUÇÃO': 'IN_PRODUCTION',
+  'EM PRODUCAO': 'IN_PRODUCTION',
+  'FINALIZADO': 'FINISHED',
+  'FINALIZADA': 'FINISHED',
+  'CONCLUÍDO': 'COMPLETED',
+  'CONCLUIDO': 'COMPLETED',
+  'ENCERRADO': 'CLOSED',
+  'ENTREGUE': 'DELIVERED',
+});
+
 function loadDeliveryGenerator() {
   deliveryGeneratorPromise ||= import('./internal-delivery-generator.js');
   return deliveryGeneratorPromise;
@@ -17,6 +40,13 @@ function cid() { return document.querySelector('#campaign-select')?.value || '';
 function today() { return new Date().toISOString().slice(0, 10); }
 function short(value) { return String(value || '').slice(0, 8); }
 function uuid() { return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`; }
+function batchStatus(batch) {
+  const raw = String(batch?.STATUS || batch?.status || '').trim().toUpperCase();
+  return DELIVERY_STATUS_ALIASES[raw] || raw;
+}
+function isDeliveryOperationalBatch(batch) {
+  return DELIVERY_OPERATIONAL_STATUSES.has(batchStatus(batch));
+}
 function notify(message, type = 'info') {
   const box = document.querySelector('#elections-toast');
   if (!box) return;
@@ -74,7 +104,8 @@ function historyMarkup(campaign) {
 }
 
 async function eligibleBatches(batches) {
-  const rows = await Promise.all((batches || []).map(async (batch) => {
+  const operational = (batches || []).filter(isDeliveryOperationalBatch);
+  const rows = await Promise.all(operational.map(async (batch) => {
     try {
       const batchId = String(batch.ID || batch.id || '');
       const gates = await dataAction('production.gates', { campaignId: cid(), productionBatchId: batchId });
@@ -167,7 +198,7 @@ async function renderPanel(panel, campaignOverride = null) {
   const campaignId = cid();
   panel.hidden = !isStageNine();
   if (panel.hidden || !campaignId) return;
-  panel.innerHTML = '<div class="internal-delivery-loading">Carregando lotes prontos para entrega…</div>';
+  panel.innerHTML = '<div class="internal-delivery-loading">Carregando apenas lotes em produção prontos para entrega…</div>';
   try {
     const [campaign, batches] = await Promise.all([
       campaignOverride ? Promise.resolve(campaignOverride) : dataAction('campaign.get', { campaignId }),
