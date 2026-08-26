@@ -24,6 +24,18 @@ function fileState(upload) {
   };
 }
 
+function setText(node, value) {
+  if (node && node.textContent !== value) node.textContent = value;
+}
+
+function setDisabled(button, disabled) {
+  if (button && button.disabled !== disabled) button.disabled = disabled;
+}
+
+function setReady(action, ready) {
+  if (action && action.classList.contains('ready') !== ready) action.classList.toggle('ready', ready);
+}
+
 function buttonMarkup(stage) {
   const next = stage === 3 ? 4 : 5;
   const label = stage === 3 ? 'Continuar: configurar etiqueta' : 'Continuar: auditar Data Matrix';
@@ -41,15 +53,15 @@ function updateStageThree(action, upload) {
   const ready = state.csv && state.pdf;
   const button = action.querySelector('.return-stage-next');
   const status = action.querySelector('[data-return-stage-status]');
-  button.disabled = !ready;
-  status.textContent = ready
+  setDisabled(button, !ready);
+  setText(status, ready
     ? 'CSV e PDF prontos. Avance para marcar o Data Matrix e carregar a chancela.'
     : !state.csv && !state.pdf
       ? 'Selecione o CSV das postagens e pelo menos um PDF de etiquetas.'
       : !state.csv
         ? 'Falta selecionar o CSV das postagens.'
-        : 'Falta selecionar o PDF das etiquetas.';
-  action.classList.toggle('ready', ready);
+        : 'Falta selecionar o PDF das etiquetas.');
+  setReady(action, ready);
 }
 
 function updateStageFour(action, upload) {
@@ -57,11 +69,11 @@ function updateStageFour(action, upload) {
   const ready = Boolean(analyze && !analyze.disabled);
   const button = action.querySelector('.return-stage-next');
   const status = action.querySelector('[data-return-stage-status]');
-  button.disabled = !ready;
-  status.textContent = ready
+  setDisabled(button, !ready);
+  setText(status, ready
     ? 'Modelo da etiqueta pronto. Avance para executar a auditoria.'
-    : 'Use o botão “Configurar etiqueta” e conclua a marcação do Data Matrix e da chancela.';
-  action.classList.toggle('ready', ready);
+    : 'Use o botão “Configurar etiqueta” e conclua a marcação do Data Matrix e da chancela.');
+  setReady(action, ready);
 }
 
 function mount() {
@@ -108,7 +120,7 @@ if (ROOT) observer.observe(ROOT, {
   childList: true,
   subtree: true,
   attributes: true,
-  attributeFilter: ['disabled', 'class', 'data-operation-stage'],
+  attributeFilter: ['disabled', 'data-operation-stage'],
 });
 
 scheduleMount();
