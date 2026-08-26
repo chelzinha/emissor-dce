@@ -2,6 +2,7 @@ import { dataAction, textDownload } from './api.js';
 import { PORTAL_CSV_MAX_ROWS, splitPortalCsv } from './elections-portal-csv-limit-ui.js';
 
 const ROOT = document.querySelector('#elections-app');
+const PREPARE_CHUNK = 200;
 const fmt = (value) => new Intl.NumberFormat('pt-BR').format(Number(value || 0));
 const campaignId = () => document.querySelector('#campaign-select')?.value || '';
 const esc = (value) => String(value ?? '').replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
@@ -102,6 +103,43 @@ async function findStoredExport(addressListId) {
   return (exports || []).find((row) => exportListId(row) === String(addressListId || '')) || null;
 }
 
+async function prepareReceivedBase(addressListId, service, content, card) {
+  let processed = 0;
+  while (true) {
+    const raw = await dataAction('addressRows.list', {
+      campaignId: campaignId(),
+      addressListId,
+      status: 'RAW',
+      limit: PREPARE_CHUNK,
+    });
+    if (!raw.length) break;
+
+    const rowIds = raw.map((row) => String(row.id || '')).filter(Boolean);
+    if (!rowIds.length) throw new Error('A base recebida não pôde ser preparada para exportação.');
+    showWorking(card, `Preparando a base recebida para o Portal Postal… ${fmt(processed + rowIds.length)} cadastros`);
+    const result = await dataAction('cleaning.process', {
+      campaignId: campaignId(),
+      addressListId,
+      rowIds,
+      defaults: { service, content },
+    });
+    const advanced = Number(result?.summary?.processed || 0);
+    if (!advanced) throw new Error('A preparação da base não avançou. Tente novamente.');
+    processed += advanced;
+  }
+
+  const pending = await dataAction('addressRows.list', {
+    campaignId: campaignId(),
+    addressListId,
+    status: 'REVIEW',
+    limit: 500,
+  });
+  if (pending.length) {
+    throw new Error(`${fmt(pending.length)} cadastro${pending.length > 1 ? 's precisam' : ' precisa'} de revisão antes da geração do arquivo do Portal Postal.`);
+  }
+  return processed;
+}
+
 async function generatePortalCsv(button) {
   const page = button.closest('.page');
   const card = button.closest('#base-export-card');
@@ -113,8 +151,9 @@ async function generatePortalCsv(button) {
 
   button.disabled = true;
   button.textContent = 'Gerando arquivos…';
-  showWorking(card, `Gerando CSVs em grupos de até ${fmt(PORTAL_CSV_MAX_ROWS)} cadastros…`);
+  showWorking(card, `Preparando a base e gerando CSVs de até ${fmt(PORTAL_CSV_MAX_ROWS)} cadastros…`);
   try {
+    await prepareReceivedBase(addressListId, service, content, card);
     const result = await dataAction('portal.export', { campaignId: campaignId(), addressListId, service, content });
     const parts = downloadParts(result.csv, result.fileName);
     markExported(addressListId, result);
@@ -176,7 +215,7 @@ async function enhanceExportedCard() {
   const description = card.querySelector('.section-title p');
   if (description && description.dataset.portalLimitCopy !== '1') {
     description.dataset.portalLimitCopy = '1';
-    description.textContent = `Depois da higienização, defina serviço e conteúdo. O sistema divide automaticamente o download em CSVs de até ${fmt(PORTAL_CSV_MAX_ROWS)} cadastros.`;
+    description.textContent = `Escolha a base recebida, defina serviço e conteúdo. O sistema prepara os registros e divide o download em CSVs de até ${fmt(PORTAL_CSV_MAX_ROWS)} cadastros.`;
   }
 
   if (card.dataset.exportRecoveryMounted === '1') return;
