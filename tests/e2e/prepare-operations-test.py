@@ -49,6 +49,10 @@ source = source.replace(
     "  await expect(page.getByRole('link', { name: /Baixar/ })).toBeVisible();",
     "  await expect(page.locator('[data-download-export], [data-redownload-export]').first()).toBeVisible({ timeout: 30_000 });",
 )
+source = source.replace(
+    "  await clickStage(page, 4);\n  const overlay = page.locator('[data-region-overlay]');",
+    "  await clickStage(page, 4);\n  await page.locator('#configure-portal-label').click();\n  const overlay = page.locator('[data-region-overlay]');",
+)
 
 source = source.replace("[data-region-overlay]", "[data-overlay]")
 source = source.replace("[data-postage-mark]", "[data-stamp]")
