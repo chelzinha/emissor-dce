@@ -15,6 +15,10 @@ async function sha256Hex(text) {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+function number(value) {
+  return new Intl.NumberFormat("pt-BR").format(Number(value || 0));
+}
+
 function fileMetadata(files) {
   return [...files].map((file) => ({ name: file.name, size: file.size, type: file.type || "application/pdf" }));
 }
@@ -50,6 +54,32 @@ function publicSavedReturn(row, recovered = true) {
     matrix: row?.MATRIX_SUMMARY_JSON || row?.matrix || {},
     recovered,
   };
+}
+
+export function validateReturnPackageCounts(csvRows, pdfDocuments, pdfFiles = []) {
+  const csvCount = Number(Array.isArray(csvRows) ? csvRows.length : csvRows || 0);
+  const pdfPageCount = (Array.isArray(pdfDocuments) ? pdfDocuments : [])
+    .reduce((sum, item) => sum + Number(item?.doc?.numPages || 0), 0);
+  const selectedNames = [...(pdfFiles || [])].map((file) => file?.name).filter(Boolean);
+  const filesLabel = selectedNames.length
+    ? ` PDF selecionado: ${selectedNames.join(", ")}.`
+    : "";
+
+  if (csvCount === pdfPageCount) return { csvCount, pdfPageCount };
+
+  if (csvCount > pdfPageCount) {
+    const missing = csvCount - pdfPageCount;
+    throw new Error(
+      `Os arquivos não correspondem. O CSV contém ${number(csvCount)} objetos, mas os PDFs selecionados somam ${number(pdfPageCount)} páginas. `
+      + `Faltam ${number(missing)} etiquetas.${filesLabel} Selecione também o PDF restante no mesmo campo ou use o CSV correspondente a essas ${number(pdfPageCount)} páginas.`,
+    );
+  }
+
+  const excess = pdfPageCount - csvCount;
+  throw new Error(
+    `Os arquivos não correspondem. O CSV contém ${number(csvCount)} objetos, mas os PDFs selecionados somam ${number(pdfPageCount)} páginas. `
+    + `Há ${number(excess)} páginas a mais.${filesLabel} Selecione o CSV correto ou retire o PDF que não pertence a este retorno.`,
+  );
 }
 
 async function existingReturnForAnalysis(campaignId, csvFile, analysis) {
@@ -105,6 +135,12 @@ export async function analyzePortalReturn({ csvFile, pdfFiles, pdfjsLib, ZXing, 
 
   onProgress?.({ stage: "pdf-load", message: "Lendo PDFs do Portal Postal" });
   const documents = await loadPdfDocuments(pdfFiles, pdfjsLib);
+  const packageCounts = validateReturnPackageCounts(parsed.rows, documents, pdfFiles);
+  onProgress?.({
+    stage: "package-check",
+    message: `Pacote conferido: ${number(packageCounts.csvCount)} objetos e ${number(packageCounts.pdfPageCount)} páginas`,
+  });
+
   const matrixResult = await auditPdfDocuments(documents, ZXing, {
     region,
     onProgress: (progress) => onProgress?.({ stage: "matrix", ...progress }),
@@ -118,6 +154,7 @@ export async function analyzePortalReturn({ csvFile, pdfFiles, pdfjsLib, ZXing, 
     matrixResult,
     rows: merged,
     summary,
+    packageCounts,
     pdfFiles: fileMetadata(pdfFiles),
   };
 }
