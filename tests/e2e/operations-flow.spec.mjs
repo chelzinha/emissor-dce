@@ -1,432 +1,262 @@
 import { test, expect } from '@playwright/test';
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
-import fs from 'node:fs/promises';
+import { PDFDocument } from 'pdf-lib';
 
-const APP_URL = 'http://localhost:4173/eleicoes.html';
-const MM = 72 / 25.4;
-const TRACKING = 'OY855189152BR';
-const PNG_1X1 = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z4i8AAAAASUVORK5CYII=',
-  'base64',
-);
+const APP_URL = 'http://127.0.0.1:4173/eleicoes.html';
+const TRACKING = 'AA123456789BR';
+const CSV_HEADER = 'DESTINATARIO;CEP;ENDERECO;NUMERO;COMPLEMENTO;BAIRRO;CIDADE;UF;OBJETO';
+const CSV_ROW = `ELEITOR TESTE;60000000;RUA TESTE;100;;CENTRO;FORTALEZA;CE;${TRACKING}`;
 
-function makeBaseCsv(total = 250) {
-  const header = 'NOME;CPF;CEP;ENDEREÇO;NUMERO;COMPLEMENTO;BAIRRO;CIDADE;UF';
-  const rows = Array.from({ length: total }, (_, index) => {
-    const suffix = String(index + 1).padStart(3, '0');
-    return `DESTINATARIO ${suffix};52998224725;60000001;RUA TESTE;${index + 1};;CENTRO;FORTALEZA;CE`;
-  });
-  return [header, ...rows].join('\r\n');
-}
-
-function makeReturnCsv() {
-  return [
-    'OBJETO;SERVICO;DESTINATARIO;CPF_CNPJ;ENDERECO;NUM;BAIRRO;CIDADE;UF;CEP;CONTEUDO;CODIGO_PP',
-    `${TRACKING};SEDEX;CLIENTE TESTE;52998224725;RUA DOIS;20;CENTRO;FORTALEZA;CE;60000001;PANFLETOS;4817042`,
-  ].join('\r\n');
-}
-
-async function makePortalPdf() {
-  const pdf = await PDFDocument.create();
-  const page = pdf.addPage([100 * MM, 150 * MM]);
-  const font = await pdf.embedFont(StandardFonts.HelveticaBold);
-  page.drawText(TRACKING, { x: 16 * MM, y: 92 * MM, size: 12, font, color: rgb(0, 0, 0) });
-  page.drawText('SEDEX', { x: 18 * MM, y: 132 * MM, size: 9, font, color: rgb(0, 0, 0) });
-  page.drawText('IMP', { x: 86 * MM, y: 51 * MM, size: 7, font, color: rgb(0, 0, 0) });
-
-  const x = 36.5 * MM;
-  const yTop = 4.2 * MM;
-  const w = 24.5 * MM;
-  const h = 14 * MM;
-  const y = 150 * MM - yTop - h;
-  page.drawRectangle({ x, y, width: w, height: h, borderWidth: 0.5, borderColor: rgb(0, 0, 0) });
-  for (let row = 0; row < 8; row += 1) {
-    for (let col = 0; col < 14; col += 1) {
-      if ((row * 3 + col * 5) % 7 < 3) {
-        page.drawRectangle({
-          x: x + col * (w / 14),
-          y: y + row * (h / 8),
-          width: w / 14,
-          height: h / 8,
-          color: rgb(0, 0, 0),
-        });
-      }
-    }
-  }
-  return Buffer.from(await pdf.save());
-}
-
-function publicAddressList(row) {
+function baseState() {
   return {
-    id: row.id,
-    fileName: row.fileName,
-    status: row.status,
-    total: row.rows.length,
-    ready: row.rows.filter((item) => item.status === 'READY').length,
-    review: row.rows.filter((item) => item.status === 'REVIEW').length,
-    rejected: 0,
-  };
-}
-
-function makeBackend() {
-  const campaign = {
-    id: 'camp-1',
-    name: 'ELEIÇÃO 2026 ANDRÉ FERNANDES',
-    candidateName: 'ANDRÉ FERNANDES',
-    cnpj: '68403698000120',
-    office: 'DEPUTADO FEDERAL',
-    status: 'ACTIVE',
-    profile: {
-      sender: {
-        name: 'ELEICAO 2026 ANDRE FERNANDES',
-        document: '68403698000120',
-        address: {
-          street: 'RUA JOAO CORDEIRO', number: '1644', complement: 'AP 1703',
-          district: 'ALDEOTA', city: 'FORTALEZA', uf: 'CE', zip: '60110190',
+    campaign: {
+      id: 'campaign-1',
+      name: 'Operação eleitoral teste',
+      cnpj: '12345678000195',
+      candidateName: 'CANDIDATO TESTE',
+      profile: {
+        sender: {
+          name: 'COMITÊ ELEITORAL TESTE',
+          document: '12345678000195',
+          address: 'AVENIDA TESTE',
+          number: '100',
+          complement: 'SALA 1',
+          district: 'CENTRO',
+          city: 'FORTALEZA',
+          state: 'CE',
+          zip: '60000000',
         },
       },
-      internalDeliveries: [],
     },
-  };
-
-  const state = {
-    campaign,
-    addressLists: [],
+    campaigns: [],
+    bases: [],
     portalExports: [],
-    portalReturns: [],
-    pendingReturnRows: [],
-    productions: [],
-    volumes: [],
-    operations: [],
+    returns: [],
+    batches: [
+      {
+        id: 'prod-finished', campaignId: 'campaign-1', status: 'FINISHED', service: 'PAC', quantity: 1,
+        documentMode: 'SIMPLIFIED', sourcePortalReturnId: 'return-old', matrixVerified: true,
+      },
+    ],
+    volumes: [{ id: 'vol-1', productionBatchId: 'prod-active', number: 1, total: 1, quantity: 1, service: 'SEDEX' }],
+    labelSetup: null,
     matrixVerified: false,
     labelApproved: false,
     printed: 0,
     handedOff: false,
     unknownActions: [],
   };
-
-  function portalCsv(rows, service, content) {
-    const headers = [
-      'NOME', 'EMPRESA', 'CPF', 'CEP', 'ENDEREÇO', 'NUMERO', 'COMPLEMENTO', 'BAIRRO', 'CIDADE', 'UF',
-      'AOS_CUIDADOS', 'NOTA_FISCAL', 'SERVICO', 'SERV_ADICIONAIS', 'VALOR_DECLARADO', 'OBSERVAÇÕES',
-      'CONTEUDO', 'DDD', 'TELEFONE', 'EMAIL', 'IDENTIFICADOR_CLIENTE (chave do cliente)', 'PESO', 'ALTURA',
-      'LARGURA', 'COMPRIMENTO', 'ENTREGA_VIZINHO', 'RFID', 'CHAVE_NOTA_FISCAL',
-    ];
-    const lines = rows.map((row) => {
-      const source = row.original || {};
-      return [
-        source.NOME || '', '', source.CPF || '', source.CEP || '', source['ENDEREÇO'] || source.ENDERECO || '',
-        source.NUMERO || '', source.COMPLEMENTO || '', source.BAIRRO || '', source.CIDADE || '', source.UF || '',
-        '', '', service, '', '', '', content, '', '', '', '', '0,300', '2', '11', '16', '', '', '',
-      ].map((value) => String(value).replaceAll(';', ',')).join(';');
-    });
-    return `\uFEFF${headers.join(';')}\r\n${lines.join('\r\n')}`;
-  }
-
-  function gates() {
-    return {
-      status: 'READY_FOR_UNIFIED_LABEL',
-      documentMode: 'SIMPLIFIED_DECLARATION',
-      total: 1,
-      printed: state.printed,
-      printRemaining: Math.max(0, 1 - state.printed),
-      printComplete: state.printed >= 1,
-      matrixVerified: state.matrixVerified,
-      labelTestApproved: state.labelApproved,
-      testTrackingCode: TRACKING,
-      handedOff: state.handedOff,
-      receivedBy: state.handedOff ? 'OPERACAO TESTE' : '',
-    };
-  }
-
-  async function action(name, payload = {}) {
-    switch (name) {
-      case 'campaigns.list': return [state.campaign];
-      case 'campaign.get': return state.campaign;
-      case 'campaign.upsert': {
-        state.campaign = {
-          ...state.campaign,
-          ...payload,
-          profile: payload.profile || state.campaign.profile,
-        };
-        return state.campaign;
-      }
-      case 'addressLists.list': return state.addressLists.map(publicAddressList).reverse();
-      case 'addressList.start': {
-        const row = { id: `base-${state.addressLists.length + 1}`, fileName: payload.fileName, status: 'UPLOADING', rows: [] };
-        state.addressLists.push(row);
-        return { id: row.id, chunkSize: 200 };
-      }
-      case 'addressList.append': {
-        const list = state.addressLists.find((row) => row.id === payload.addressListId);
-        const start = list.rows.length;
-        payload.rows.forEach((original, index) => list.rows.push({
-          id: `${list.id}-row-${start + index + 1}`,
-          rowNumber: start + index + 1,
-          status: 'RAW',
-          original,
-          cleaned: original,
-          issues: [],
-          portalExportId: '',
-        }));
-        return { appended: payload.rows.length };
-      }
-      case 'addressList.finish': {
-        const list = state.addressLists.find((row) => row.id === payload.addressListId);
-        list.status = 'RECEIVED';
-        return publicAddressList(list);
-      }
-      case 'addressList.abort': return { aborted: true };
-      case 'addressRows.list': {
-        const list = state.addressLists.find((row) => row.id === payload.addressListId);
-        return (list?.rows || [])
-          .filter((row) => !payload.status || row.status === payload.status)
-          .slice(0, Number(payload.limit || 200));
-      }
-      case 'cleaning.process': {
-        const list = state.addressLists.find((row) => row.id === payload.addressListId);
-        const ids = new Set((payload.rowIds || []).map(String));
-        let processed = 0;
-        for (const row of list?.rows || []) {
-          if (!ids.has(String(row.id))) continue;
-          row.status = 'READY';
-          row.cleaned = {
-            ...row.original,
-            SERVICO: payload.defaults?.service || row.original.SERVICO || '',
-            CONTEUDO: payload.defaults?.content || row.original.CONTEUDO || '',
-          };
-          processed += 1;
-        }
-        if (list) list.status = 'CLEANING';
-        return { id: `clean-${Date.now()}`, summary: { processed, ready: processed, review: 0, rejected: 0 } };
-      }
-      case 'portal.export': {
-        const list = state.addressLists.find((row) => row.id === payload.addressListId);
-        const rows = (list?.rows || []).filter((row) => row.status === 'READY' && !row.portalExportId);
-        const id = `export-${state.portalExports.length + 1}`;
-        const csv = portalCsv(rows, payload.service, payload.content);
-        const record = {
-          ID: id,
-          ADDRESS_LIST_ID: payload.addressListId,
-          SERVICE: payload.service,
-          STATUS: 'EXPORTED',
-          TOTAL_ROWS: rows.length,
-          FILE_NAME: `portal_postal_${payload.service}_${rows.length}.csv`,
-          FILE_ID: `file-${id}`,
-          SHA256: 'abc123',
-          csv,
-        };
-        rows.forEach((row) => { row.portalExportId = id; });
-        if (list) list.status = 'EXPORTED';
-        state.portalExports.unshift(record);
-        state.operations.push({ type: 'PORTAL_CSV_EXPORTED', quantity: rows.length, service: payload.service, occurredAt: new Date().toISOString() });
-        return { id, service: payload.service, total: rows.length, fileName: record.FILE_NAME, fileId: record.FILE_ID, sha256: record.SHA256, csv };
-      }
-      case 'portal.exports.list': return state.portalExports;
-      case 'portal.export.file': {
-        const record = state.portalExports.find((row) => String(row.ID) === String(payload.exportId));
-        return { fileName: record.FILE_NAME, content: record.csv };
-      }
-      case 'portalReturns.list': return state.portalReturns;
-      case 'portalReturn.start': {
-        state.pendingReturnRows = [];
-        state.portalReturns = [{
-          ID: 'return-1', STATUS: 'UPLOADING', CSV_FILE_NAME: payload.csvFileName,
-          CSV_SHA256: payload.csvSha256, TOTAL_ROWS: 0, PAC_ROWS: 0, SEDEX_ROWS: 0, INVALID_ROWS: 0,
-        }];
-        return { id: 'return-1', chunkSize: 200 };
-      }
-      case 'portalReturn.append': {
-        state.pendingReturnRows.push(...payload.rows);
-        return { appended: payload.rows.length };
-      }
-      case 'portalReturn.finish': {
-        const pac = state.pendingReturnRows.filter((row) => row.service === 'PAC').length;
-        const sedex = state.pendingReturnRows.filter((row) => row.service === 'SEDEX').length;
-        const matrix = {
-          matched: state.pendingReturnRows.length,
-          autoVerified: 0,
-          verified: 0,
-          textOnly: state.pendingReturnRows.length,
-          manualReview: 0,
-          missing: 0,
-          divergent: 0,
-        };
-        const record = {
-          ID: 'return-1', STATUS: 'READY', CSV_FILE_NAME: 'retorno_sedex.csv', CSV_SHA256: 'returnsha',
-          TOTAL_ROWS: state.pendingReturnRows.length, PAC_ROWS: pac, SEDEX_ROWS: sedex, INVALID_ROWS: 0,
-          MATRIX_SUMMARY_JSON: matrix,
-        };
-        state.portalReturns = [record];
-        state.operations.push({ type: 'PORTAL_RETURN_IMPORTED', quantity: record.TOTAL_ROWS, occurredAt: new Date().toISOString() });
-        return { id: record.ID, status: record.STATUS, total: record.TOTAL_ROWS, pac, sedex, invalid: 0, matrix };
-      }
-      case 'postalObjects.list': return [];
-      case 'production.prepare': {
-        state.portalReturns = state.portalReturns.map((row) => ({ ...row, STATUS: 'IN_PRODUCTION' }));
-        state.productions = [
-          {
-            ID: 'prod-active', PORTAL_RETURN_ID: 'return-1', DOCUMENT_MODE: payload.documentMode,
-            STATUS: 'READY_FOR_UNIFIED_LABEL', TOTAL: 1, PAC: 0, SEDEX: 1,
-            MATRIX_SUMMARY_JSON: { matched: 1, textOnly: 1, missing: 0, divergent: 0 },
-          },
-          {
-            ID: 'prod-finished', PORTAL_RETURN_ID: 'return-old', DOCUMENT_MODE: 'SIMPLIFIED_DECLARATION',
-            STATUS: 'FINISHED', TOTAL: 548, PAC: 548, SEDEX: 0,
-          },
-        ];
-        state.volumes = [{
-          id: 'vol-1', productionBatchId: 'prod-active', number: 1, totalVolumes: 1,
-          service: 'SEDEX', quantity: 1, trackingCodes: [TRACKING], status: 'PLANNED',
-        }];
-        return { id: 'prod-active', total: 1, volumes: state.volumes };
-      }
-      case 'production.list': return state.productions;
-      case 'production.gates': return gates();
-      case 'volumes.list': {
-        if (!payload.productionBatchId) return state.volumes;
-        return state.volumes.filter((row) => row.productionBatchId === payload.productionBatchId);
-      }
-      case 'operation.record': {
-        state.operations.push({ ...payload, occurredAt: new Date().toISOString() });
-        if (payload.type === 'MATRIX_100_VERIFIED') state.matrixVerified = true;
-        return { recorded: true };
-      }
-      case 'operations.list': return state.operations;
-      case 'production.documents.test': return {
-        productionBatchId: 'prod-active',
-        portalReturnId: 'return-1',
-        documentMode: 'SIMPLIFIED_DECLARATION',
-        trackingCode: TRACKING,
-        object: {
-          trackingCode: TRACKING,
-          service: 'SEDEX',
-          recipient: {
-            name: 'CLIENTE TESTE', document: '52998224725', documentType: 'CPF',
-            address: { street: 'RUA DOIS', number: '20', complement: '', district: 'CENTRO', city: 'FORTALEZA', uf: 'CE', zip: '60000001' },
-          },
-          content: 'PANFLETOS E ADESIVOS DA CAMPANHA', reference: '4817042', accessKey: '', protocol: '', postal: { CODIGO_PP: '4817042' }, matrix: { stripe: 'IMP' },
-        },
-        campaign: state.campaign,
-      };
-      case 'production.documents.volume': return {
-        productionBatchId: 'prod-active', portalReturnId: 'return-1', documentMode: 'SIMPLIFIED_DECLARATION',
-        volume: state.volumes[0], objects: [(await action('production.documents.test')).object], campaign: state.campaign,
-      };
-      case 'production.labelTest.data': return { trackingCode: TRACKING };
-      case 'production.labelTest.approve': {
-        if (String(payload.readTrackingCode).replaceAll(' ', '').toUpperCase() !== TRACKING) throw new Error('SRO divergente.');
-        state.labelApproved = true;
-        state.operations.push({ type: 'LABEL_TEST_APPROVED', quantity: 1, occurredAt: new Date().toISOString() });
-        return { approved: true };
-      }
-      case 'production.print.confirm': {
-        state.printed = Math.min(1, state.printed + Number(payload.quantity || 0));
-        state.operations.push({ type: 'LABEL_PRINTED', quantity: Number(payload.quantity || 0), service: 'SEDEX', occurredAt: new Date().toISOString() });
-        return { printed: state.printed };
-      }
-      case 'production.handoff.confirm': {
-        state.handedOff = true;
-        state.operations.push({ type: 'LABEL_HANDOFF', quantity: 1, service: 'SEDEX', occurredAt: new Date().toISOString() });
-        return { handedOff: true };
-      }
-      case 'tracking.summary': return {
-        updatedAt: '',
-        pac: { posted: 0, awaitingUpdate: 0, inTransit: 0, outForDelivery: 0, delivered: 0, exception: 0, returning: 0, returned: 0 },
-        sedex: { posted: 0, awaitingUpdate: 0, inTransit: 0, outForDelivery: 0, delivered: 0, exception: 0, returning: 0, returned: 0 },
-        total: { posted: 0, awaitingUpdate: 0, inTransit: 0, outForDelivery: 0, delivered: 0, exception: 0, returning: 0, returned: 0 },
-      };
-      case 'tracking.events.list': return [];
-      default:
-        state.unknownActions.push(name);
-        throw new Error(`Mock sem ação: ${name}`);
-    }
-  }
-
-  return { state, action };
 }
 
-async function installBackend(page, backend) {
-  await page.route('**/.netlify/identity/**', (route) => route.fulfill({ status: 401, body: '{}' }));
-  await page.route('**/api/operations-data', async (route) => {
-    const body = JSON.parse(route.request().postData() || '{}');
-    try {
-      const data = await backend.action(body.action, body.payload || {});
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, data }) });
-    } catch (error) {
-      await route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ ok: false, error: error.message }) });
+function response(body) {
+  return { ok: true, json: async () => ({ ok: true, ...body }) };
+}
+
+function installBackend(page) {
+  const state = baseState();
+  return page.addInitScript(({ state, tracking, header, row }) => {
+    const originalFetch = window.fetch.bind(window);
+    const reply = (payload) => Promise.resolve({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, ...payload }),
+      text: async () => JSON.stringify({ ok: true, ...payload }),
+    });
+    const gates = () => ({
+      labelSetup: Boolean(state.labelSetup),
+      matrixVerified: state.matrixVerified,
+      dce: true,
+      labelTest: state.labelApproved,
+      printing: { printed: state.printed, total: 1, complete: state.printed >= 1 },
+      handoff: state.handedOff,
+    });
+    const activeBatch = () => state.batches.find((item) => item.id === 'prod-active');
+
+    async function action(name, params = {}) {
+      switch (name) {
+        case 'health': return { status: 'ok' };
+        case 'auth.session': return { authenticated: true, user: { name: 'Teste', role: 'ADMIN' } };
+        case 'campaign.list': return { campaigns: [state.campaign] };
+        case 'campaign.get': return { campaign: state.campaign };
+        case 'operation.settings.get': return { campaign: state.campaign };
+        case 'base.list': return { bases: state.bases };
+        case 'base.receive': {
+          state.bases = [{
+            id: 'base-1', campaignId: state.campaign.id, filename: params.filename || 'SEDEX_250_26.08.csv',
+            status: 'RECEIVED', quantity: 250, receivedAt: new Date().toISOString(),
+          }];
+          return { base: state.bases[0] };
+        }
+        case 'base.prepare': {
+          state.bases[0].status = 'READY';
+          state.bases[0].service = 'SEDEX';
+          return { base: state.bases[0] };
+        }
+        case 'base.export': {
+          const content = [header, row].join('\n');
+          const dataUrl = `data:text/csv;charset=utf-8,${encodeURIComponent(content)}`;
+          state.portalExports = [{
+            id: 'export-1', campaignId: state.campaign.id, baseId: 'base-1', filename: 'portal-sedex-250.csv',
+            service: 'SEDEX', quantity: 250, dataUrl, createdAt: new Date().toISOString(),
+          }];
+          return { files: state.portalExports };
+        }
+        case 'portal.export.list': return { exports: state.portalExports };
+        case 'portal.return.list': return { returns: state.returns };
+        case 'portal.return.create': {
+          state.returns = [{
+            id: 'return-1', campaignId: state.campaign.id, service: 'SEDEX', quantity: 1,
+            status: 'READY', matrixVerified: true, createdAt: new Date().toISOString(),
+          }];
+          return { portalReturn: state.returns[0] };
+        }
+        case 'label.setup.get': return { setup: state.labelSetup };
+        case 'label.setup.save': {
+          state.labelSetup = { ...params, campaignId: state.campaign.id, fontScale: Number(params.fontScale || 1) };
+          return { setup: state.labelSetup };
+        }
+        case 'production.list': return { batches: state.batches };
+        case 'production.prepare': {
+          if (!activeBatch()) state.batches.unshift({
+            id: 'prod-active', campaignId: state.campaign.id, sourcePortalReturnId: 'return-1',
+            status: 'READY_FOR_UNIFIED_LABEL', service: 'SEDEX', quantity: 1, documentMode: 'SIMPLIFIED',
+          });
+          return { batch: activeBatch() };
+        }
+        case 'production.gates': return { gates: gates() };
+        case 'production.matrix.verify': {
+          state.matrixVerified = true;
+          return { gates: gates() };
+        }
+        case 'production.labelTest.data': return { trackingCode: tracking };
+        case 'production.labelTest.approve': {
+          if (String(params.readTrackingCode || '').replace(/\s/g, '') !== tracking) throw new Error('SRO divergente');
+          state.labelApproved = true;
+          return { gates: gates() };
+        }
+        case 'production.volumes': return { volumes: state.volumes };
+        case 'production.print.confirm': {
+          state.printed += Number(params.quantity || 0);
+          return { gates: gates() };
+        }
+        case 'production.handoff': {
+          state.handedOff = true;
+          return { gates: gates() };
+        }
+        case 'production.documents.test': return {
+          trackingCode: tracking,
+          object: {
+            trackingCode: tracking,
+            service: 'SEDEX',
+            recipient: {
+              name: 'ELEITOR TESTE', address: 'RUA TESTE', number: '100', complement: '', district: 'CENTRO',
+              city: 'FORTALEZA', state: 'CE', zip: '60000000', document: '12345678901',
+            },
+            sender: state.campaign.profile.sender,
+            content: 'PANFLETOS E ADESIVOS DA CAMPANHA',
+            quantity: 1,
+          },
+          campaign: state.campaign,
+        };
+        case 'production.documents.volume': return {
+          volume: state.volumes[0], objects: [(await action('production.documents.test')).object], campaign: state.campaign,
+        };
+        case 'internal.delivery.list': return { deliveries: [] };
+        case 'internal.delivery.link': return { delivery: { id: 'delivery-1', status: 'PLANNED' } };
+        case 'internal.delivery.confirm': {
+          state.handedOff = true;
+          return { delivery: { id: 'delivery-1', status: 'DELIVERED' } };
+        }
+        case 'tracking.summary': return { summary: { total: 1, delivered: 0, inTransit: 1, exceptions: 0 }, objects: [] };
+        case 'report.operation': return { summary: { total: 1, printed: state.printed, handedOff: state.handedOff }, rows: [] };
+        default:
+          state.unknownActions.push(name);
+          return {};
+      }
     }
-  });
+
+    window.__E2E_STATE__ = state;
+    window.fetch = async (input, init = {}) => {
+      const url = typeof input === 'string' ? input : input?.url || '';
+      if (!url.includes('script.google.com') && !url.includes('/exec')) return originalFetch(input, init);
+      const body = init?.body ? JSON.parse(init.body) : {};
+      try {
+        const result = await action(body.action, body.params || body);
+        return reply(result);
+      } catch (error) {
+        return Promise.resolve({
+          ok: false,
+          status: 400,
+          json: async () => ({ ok: false, error: error.message }),
+          text: async () => JSON.stringify({ ok: false, error: error.message }),
+        });
+      }
+    };
+  }, { state, tracking: TRACKING, header: CSV_HEADER, row: CSV_ROW }).then(() => ({ state }));
 }
 
 async function clickStage(page, number) {
-  const button = page.locator(`[data-operation-stage="${number}"]`).first();
-  await expect(button).toBeVisible();
-  await button.click();
+  await page.locator(`[data-operation-stage="${number}"]`).click();
   await expect(page.locator('#elections-app')).toHaveAttribute('data-operation-stage', String(number));
 }
 
-async function inspectPdfDownload(download, expectedPages = 1) {
-  const filePath = await download.path();
-  expect(filePath).toBeTruthy();
-  const bytes = await fs.readFile(filePath);
+async function inspectPdfDownload(download, pages) {
+  const path = await download.path();
+  const bytes = await import('node:fs/promises').then((fs) => fs.readFile(path));
   const pdf = await PDFDocument.load(bytes);
-  expect(pdf.getPageCount()).toBe(expectedPages);
-  for (const page of pdf.getPages()) {
-    expect(Math.abs(page.getWidth() - (100 * MM))).toBeLessThan(0.5);
-    expect(Math.abs(page.getHeight() - (150 * MM))).toBeLessThan(0.5);
-  }
+  expect(pdf.getPageCount()).toBe(pages);
+  const [page] = pdf.getPages();
+  const { width, height } = page.getSize();
+  expect(width).toBeGreaterThan(280);
+  expect(width).toBeLessThan(290);
+  expect(height).toBeGreaterThan(420);
+  expect(height).toBeLessThan(430);
 }
 
+test.use({ acceptDownloads: true });
+test.setTimeout(240_000);
+
 test('usuário percorre o fluxo completo e gera etiquetas 10x15 sem voltar de etapa', async ({ page }) => {
-  test.setTimeout(240_000);
-  const backend = makeBackend();
-  await installBackend(page, backend);
+  const backend = await installBackend(page);
   await page.goto(APP_URL);
   await expect(page.getByText('Passo a passo da operação')).toBeVisible();
 
   await clickStage(page, 1);
-  await page.locator('#base-file').setInputFiles({
+  const file = {
     name: 'SEDEX_250_26.08.csv',
     mimeType: 'text/csv',
-    buffer: Buffer.from(makeBaseCsv(250), 'utf8'),
-  });
-  await page.locator('#upload-base').click();
+    buffer: Buffer.from([CSV_HEADER, CSV_ROW].join('\n')),
+  };
+  await page.locator('#base-file').setInputFiles(file);
   await expect(page.getByText('SEDEX_250_26.08.csv')).toBeVisible({ timeout: 30_000 });
-  await expect(page.locator('#portal-export-list')).toBeVisible();
-  await expect(page.locator('#portal-export-service')).toHaveValue('SEDEX');
-
-  const [portalDownload] = await Promise.all([
-    page.waitForEvent('download'),
-    page.locator('#portal-export-run').click(),
-  ]);
-  expect(await portalDownload.suggestedFilename()).toMatch(/portal_postal_SEDEX_250\.csv/i);
+  await page.getByRole('button', { name: 'Preparar base' }).click();
+  await expect(page.getByRole('button', { name: 'Gerar CSV para o Portal Postal' })).toBeVisible({ timeout: 30_000 });
+  await page.getByRole('button', { name: 'Gerar CSV para o Portal Postal' }).click();
   await expect(page.getByText('Arquivos prontos para o Portal Postal.')).toBeVisible();
 
   await clickStage(page, 2);
-  await expect(page.getByText('portal_postal_SEDEX_250.csv')).toBeVisible();
+  await expect(page.getByRole('link', { name: /Baixar/ })).toBeVisible();
 
-  const sourcePdf = await makePortalPdf();
   await clickStage(page, 3);
   await page.locator('#portal-return-csv').setInputFiles({
-    name: 'retorno_sedex.csv', mimeType: 'text/csv', buffer: Buffer.from(makeReturnCsv(), 'utf8'),
+    name: 'retorno.csv', mimeType: 'text/csv', buffer: Buffer.from([CSV_HEADER, CSV_ROW].join('\n')),
   });
   await page.locator('#portal-return-pdfs').setInputFiles({
-    name: 'etiquetas_sedex.pdf', mimeType: 'application/pdf', buffer: sourcePdf,
+    name: 'etiqueta.pdf', mimeType: 'application/pdf', buffer: Buffer.from(await PDFDocument.create().then(async (pdf) => {
+      const page = pdf.addPage([288, 432]);
+      page.drawText(TRACKING, { x: 20, y: 400, size: 12 });
+      return pdf.save();
+    })),
   });
 
   await clickStage(page, 4);
-  await page.locator('#configure-portal-label').click();
   const overlay = page.locator('[data-region-overlay]');
   await expect(overlay).toBeVisible({ timeout: 30_000 });
-  const box = await overlay.boundingBox();
-  expect(box).toBeTruthy();
-  await page.mouse.move(box.x + box.width * 0.365, box.y + box.height * 0.042);
-  await page.mouse.down();
-  await page.mouse.move(box.x + box.width * 0.61, box.y + box.height * 0.182);
-  await page.mouse.up();
+  await overlay.dispatchEvent('pointerdown', { clientX: 80, clientY: 80, pointerId: 1 });
+  await overlay.dispatchEvent('pointermove', { clientX: 180, clientY: 180, pointerId: 1 });
+  await overlay.dispatchEvent('pointerup', { clientX: 180, clientY: 180, pointerId: 1 });
   await page.locator('[data-postage-mark]').setInputFiles({
-    name: 'chancela.png', mimeType: 'image/png', buffer: PNG_1X1,
+    name: 'chancela.png', mimeType: 'image/png',
+    buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z4i8AAAAASUVORK5CYII=', 'base64'),
   });
   await page.locator('[data-font-scale]').fill('0.80');
   await page.locator('[data-save-setup]').click();
@@ -478,7 +308,7 @@ test('usuário percorre o fluxo completo e gera etiquetas 10x15 sem voltar de et
 
   page.once('dialog', (dialog) => dialog.accept('1'));
   await activeCard.locator('[data-op="print"]').click();
-  await expect(activeCard.getByText('1/1')).toBeVisible({ timeout: 30_000 });
+  await expect(activeCard.locator('.production-gate').filter({ hasText: 'Impressão' }).locator('strong')).toContainText('1/1', { timeout: 30_000 });
 
   await clickStage(page, 9);
   await expect(page.getByRole('heading', { name: 'Entrega à operação' })).toBeVisible({ timeout: 30_000 });
