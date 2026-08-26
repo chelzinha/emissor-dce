@@ -1,7 +1,12 @@
 const ROOT = document.querySelector('#elections-app');
 const STAGE_KEY = 'AGF_OPERATION_STAGE_FULL_1_11';
 const DYNAMIC_STAGE_VIEWS = Object.freeze({ 10: 'tracking', 11: 'reports' });
-const DYNAMIC_VIEWS = new Set(['tracking', 'reports', 'finance']);
+const DYNAMIC_VIEW_PAGES = Object.freeze({
+  tracking: '.tracking-page',
+  reports: '.reports-page',
+  finance: '.finance-page',
+});
+const DYNAMIC_VIEWS = new Set(Object.keys(DYNAMIC_VIEW_PAGES));
 
 function nativeViewButton(view) {
   return ROOT?.querySelector(`.app-nav > button[data-view="${CSS.escape(String(view || ''))}"]`);
@@ -10,6 +15,11 @@ function nativeViewButton(view) {
 function emitDynamicView(view) {
   if (!ROOT || !DYNAMIC_VIEWS.has(view)) return false;
   ROOT.dispatchEvent(new CustomEvent('agf:navigate-view', { detail: { view } }));
+  setTimeout(() => {
+    const selector = DYNAMIC_VIEW_PAGES[view];
+    if (selector && ROOT.querySelector(selector)) return;
+    nativeViewButton(view)?.click();
+  }, 0);
   return true;
 }
 
