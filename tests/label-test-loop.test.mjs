@@ -14,6 +14,7 @@ test('geração busca apenas Data Matrix dos SROs necessários', () => {
   assert.match(generator, /matrixCrops\(portalReturnId, trackingCodes, onProgress\)/);
   assert.match(generator, /targetTrackingCodes: targets/);
   assert.match(generator, /targets\.join\("\\|"\)/);
+  assert.match(generator, /origin === 'texto'/);
 });
 
 test('restauração de sessão encerra o observer após uma única recuperação', () => {
@@ -25,6 +26,7 @@ test('restauração de sessão encerra o observer após uma única recuperação
 test('etiqueta teste usa modal estável e mantém etapa de produção', () => {
   assert.match(stability, /data-op="test"/);
   assert.match(stability, /askTrackingCode/);
+  assert.match(stability, /pinProductionStage/);
   assert.match(stability, /sessionStorage\.removeItem\(RESUME_KEY\)/);
   assert.doesNotMatch(stability, /location\.reload/);
   assert.match(html, /elections-label-test-stability\.js/);
