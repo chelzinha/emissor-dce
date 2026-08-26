@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
 
-const html = fs.readFileSync(new URL('../portal.html', import.meta.url), 'utf8');
+const html = fs.readFileSync(new URL('../portal-certificado.html', import.meta.url), 'utf8');
 const js = fs.readFileSync(new URL('../src/client-cnpj-temp.js', import.meta.url), 'utf8');
 const css = fs.readFileSync(new URL('../src/client-cnpj-temp-redesign.css', import.meta.url), 'utf8');
 
