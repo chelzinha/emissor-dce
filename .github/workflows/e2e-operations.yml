@@ -46,9 +46,23 @@ jobs:
           path = Path('tests/e2e/operations-flow.spec.mjs')
           source = path.read_text(encoding='utf-8')
           old = '  const backend = await installBackend(page);'
-          new = '  const backend = await installBackend(page);\n  backend.state.matrixVerified = true;'
+          new = '''  const backend = await installBackend(page);
+          backend.state.matrixVerified = true;
+          const senderFixture = backend.state.campaign.profile.sender;
+          backend.state.campaign.profile.sender = {
+            ...senderFixture,
+            address: {
+              street: senderFixture.address,
+              number: senderFixture.number,
+              complement: senderFixture.complement,
+              district: senderFixture.district,
+              city: senderFixture.city,
+              uf: senderFixture.state,
+              zip: senderFixture.zip,
+            },
+          };'''
           if old not in source:
-              raise SystemExit('Não foi possível preparar a conferência sintética do Data Matrix.')
+              raise SystemExit('Não foi possível preparar as condições sintéticas da produção.')
           path.write_text(source.replace(old, new, 1), encoding='utf-8')
           PY
       - name: Percorrer o fluxo completo
