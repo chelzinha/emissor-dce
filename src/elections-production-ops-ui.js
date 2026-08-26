@@ -8,10 +8,55 @@ import { isLabelSetupComplete } from './label-setup.js';
 
 const ROOT = document.querySelector('#elections-app');
 
+const OPERATIONAL_BATCH_STATUSES = new Set([
+  'AWAITING_DCE_PREPARATION',
+  'DCE_PREPARED',
+  'DCE_RESERVED',
+  'DCE_PARTIAL',
+  'READY_FOR_UNIFIED_LABEL',
+  'IN_PRODUCTION',
+  'PREPARED',
+  'PROCESSING',
+  'PARTIAL',
+]);
+
+const STATUS_ALIASES = Object.freeze({
+  'EM PRODUÇÃO': 'IN_PRODUCTION',
+  'EM PRODUCAO': 'IN_PRODUCTION',
+  'FINALIZADO': 'FINISHED',
+  'FINALIZADA': 'FINISHED',
+  'CONCLUÍDO': 'COMPLETED',
+  'CONCLUIDO': 'COMPLETED',
+  'ENCERRADO': 'CLOSED',
+  'ENTREGUE': 'DELIVERED',
+});
+
 function h(value) {
   return String(value ?? '').replace(/[&<>'\"]/g, (char) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '\"': '&quot;'
   }[char]));
+}
+
+function normalizeBatchStatus(value) {
+  const raw = String(value || '').trim().toUpperCase();
+  return STATUS_ALIASES[raw] || raw;
+}
+
+function batchRecordStatus(batch) {
+  return normalizeBatchStatus(batch?.STATUS || batch?.status);
+}
+
+function cardBatchStatus(card) {
+  const chip = card?.querySelector('.status');
+  return normalizeBatchStatus(
+    card?.dataset.productionStatus
+      || chip?.dataset.statusCode
+      || chip?.textContent
+  );
+}
+
+function isOperationalBatchStatus(value) {
+  return OPERATIONAL_BATCH_STATUSES.has(normalizeBatchStatus(value));
 }
 
 function campaignId() {
@@ -122,7 +167,7 @@ async function gatesWithRecovery(batchId, batch) {
       productionBatchId: batchId,
     });
   } catch (error) {
-    if (!isAssociationMismatch(error)) throw error;
+    if (!isAssociationMismatch(error) || !isOperationalBatchStatus(batchRecordStatus(batch))) throw error;
     const portalReturnId = portalReturnIdFromBatch(batch);
     const documentMode = documentModeFromBatch(batch);
     if (!portalReturnId || !documentMode) throw error;
@@ -142,9 +187,17 @@ async function gatesWithRecovery(batchId, batch) {
 
 async function loadGates(card, batchId) {
   const slot = card.querySelector('.production-ops-gates');
+  if (!slot || !isOperationalBatchStatus(cardBatchStatus(card))) {
+    slot?.remove();
+    return;
+  }
   try {
     const batch = await batchInfo(batchId);
     if (!batch) throw new Error('Lote de produção não localizado.');
+    if (!isOperationalBatchStatus(batchRecordStatus(batch))) {
+      slot.remove();
+      return;
+    }
     const gates = await gatesWithRecovery(batchId, batch);
     const portalReturnId = portalReturnIdFromBatch(batch);
     const assets = portalReturnId ? await getPortalReturnAssets(portalReturnId) : null;
@@ -274,9 +327,14 @@ async function runAction(card, batchId, action, gates) {
 
 function mount() {
   productionCards().forEach((card) => {
+    const existing = card.querySelector('.production-ops-gates');
+    if (!isOperationalBatchStatus(cardBatchStatus(card))) {
+      existing?.remove();
+      return;
+    }
     const volumeButton = card.querySelector('[data-volumes]');
     const batchId = volumeButton?.dataset.volumes;
-    if (!batchId || card.querySelector('.production-ops-gates')) return;
+    if (!batchId || existing) return;
     const slot = document.createElement('div');
     slot.className = 'production-ops-gates';
     slot.innerHTML = '<div class="production-ops-progress">Carregando gates operacionais...</div>';
