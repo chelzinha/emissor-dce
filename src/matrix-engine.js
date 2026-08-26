@@ -28,32 +28,36 @@ export function stripeFromTextContent(textContent, viewport, window = STRIPE_WIN
   return candidates[0].text;
 }
 
-function imageFromDataUrl(dataUrl) {
-  return new Promise((resolve) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => resolve(null);
-    image.src = dataUrl;
-  });
+function releaseCanvas(canvas) {
+  if (!canvas) return;
+  canvas.width = 1;
+  canvas.height = 1;
 }
 
-export async function decodeDataMatrix(dataUrl, ZXing) {
-  if (!ZXing) throw new Error("ZXing nao disponivel");
-  const image = await imageFromDataUrl(dataUrl);
-  if (!image) return null;
+function hintsForDataMatrix(ZXing) {
   const hints = new Map();
   hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
   hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.DATA_MATRIX]);
+  return hints;
+}
 
-  const attempt = (scale) => {
-    const width = Math.round(image.width * scale);
-    const height = Math.round(image.height * scale);
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
+function decodeCanvasAtScale(sourceCanvas, ZXing, hints, scale) {
+  let canvas = sourceCanvas;
+  let temporary = false;
+  if (scale !== 1) {
+    canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(sourceCanvas.width * scale));
+    canvas.height = Math.max(1, Math.round(sourceCanvas.height * scale));
+    const scaledContext = canvas.getContext("2d", { willReadFrequently: true });
+    scaledContext.imageSmoothingEnabled = false;
+    scaledContext.drawImage(sourceCanvas, 0, 0, canvas.width, canvas.height);
+    temporary = true;
+  }
+
+  try {
+    const width = canvas.width;
+    const height = canvas.height;
     const context = canvas.getContext("2d", { willReadFrequently: true });
-    context.imageSmoothingEnabled = scale < 1;
-    context.drawImage(image, 0, 0, width, height);
     const rgba = context.getImageData(0, 0, width, height).data;
     const luminance = new Uint8ClampedArray(width * height);
     for (let index = 0; index < width * height; index += 1) {
@@ -67,13 +71,45 @@ export async function decodeDataMatrix(dataUrl, ZXing) {
       } catch { /* tenta a proxima estrategia */ }
     }
     return null;
-  };
+  } finally {
+    if (temporary) releaseCanvas(canvas);
+  }
+}
 
-  for (const scale of [1, 3]) {
-    const decoded = attempt(scale);
+export async function decodeDataMatrixCanvas(canvas, ZXing, scales = [1, 1.5]) {
+  if (!ZXing) throw new Error("ZXing nao disponivel");
+  if (!canvas?.width || !canvas?.height) return null;
+  const hints = hintsForDataMatrix(ZXing);
+  for (const scale of scales) {
+    const decoded = decodeCanvasAtScale(canvas, ZXing, hints, scale);
     if (decoded) return decoded;
+    await new Promise((resolve) => setTimeout(resolve, 0));
   }
   return null;
+}
+
+function imageFromDataUrl(dataUrl) {
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => resolve(null);
+    image.src = dataUrl;
+  });
+}
+
+export async function decodeDataMatrix(dataUrl, ZXing) {
+  const image = await imageFromDataUrl(dataUrl);
+  if (!image) return null;
+  const canvas = document.createElement("canvas");
+  canvas.width = image.width;
+  canvas.height = image.height;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  context.drawImage(image, 0, 0);
+  try {
+    return await decodeDataMatrixCanvas(canvas, ZXing);
+  } finally {
+    releaseCanvas(canvas);
+  }
 }
 
 export async function renderMatrixCrop(page, region = DEFAULT_MATRIX_REGION, scale = DEFAULT_RENDER_SCALE) {
@@ -99,9 +135,12 @@ export async function renderMatrixCrop(page, region = DEFAULT_MATRIX_REGION, sca
 export async function auditPdfDocuments(pdfDocuments, ZXing, options = {}) {
   const region = options.region || DEFAULT_MATRIX_REGION;
   const renderScale = Number(options.renderScale || DEFAULT_RENDER_SCALE);
+  const reinforcedScale = Number(options.reinforcedScale || renderScale * 1.5);
+  const keepCrops = options.keepCrops === true;
   const onProgress = typeof options.onProgress === "function" ? options.onProgress : () => {};
   const totalPages = pdfDocuments.reduce((sum, item) => sum + item.doc.numPages, 0);
   const crops = new Map();
+  const seenObjects = new Set();
   const audit = [];
   const diagnostics = { byCode: 0, byText: 0, missing: 0, reinforced: 0, divergent: [], duplicates: [] };
   let processed = 0;
@@ -109,48 +148,65 @@ export async function auditPdfDocuments(pdfDocuments, ZXing, options = {}) {
   for (const item of pdfDocuments) {
     for (let pageNumber = 1; pageNumber <= item.doc.numPages; pageNumber += 1) {
       const page = await item.doc.getPage(pageNumber);
-      const textContent = await page.getTextContent();
-      const pageText = textContent.items.map((entry) => entry.str).join(" ").toUpperCase();
-      const textCodes = trackingCodesFromText(pageText);
-      const stripe = stripeFromTextContent(textContent, page.getViewport({ scale: 1 })) || "";
+      let crop = null;
+      let reinforcedCrop = null;
+      try {
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items.map((entry) => entry.str).join(" ").toUpperCase();
+        const textCodes = trackingCodesFromText(pageText);
+        const stripe = stripeFromTextContent(textContent, page.getViewport({ scale: 1 })) || "";
 
-      let crop = await renderMatrixCrop(page, region, renderScale);
-      let cropDataUrl = crop.toDataURL("image/png");
-      let payload = await decodeDataMatrix(cropDataUrl, ZXing);
-      if (!payload) {
-        crop = await renderMatrixCrop(page, region, renderScale * 2);
-        const reinforcedDataUrl = crop.toDataURL("image/png");
-        const reinforcedPayload = await decodeDataMatrix(reinforcedDataUrl, ZXing);
-        if (reinforcedPayload) {
-          cropDataUrl = reinforcedDataUrl;
-          payload = reinforcedPayload;
-          diagnostics.reinforced += 1;
+        crop = await renderMatrixCrop(page, region, renderScale);
+        let selectedCrop = crop;
+        let payload = await decodeDataMatrixCanvas(crop, ZXing);
+        if (!payload) {
+          reinforcedCrop = await renderMatrixCrop(page, region, reinforcedScale);
+          const reinforcedPayload = await decodeDataMatrixCanvas(reinforcedCrop, ZXing);
+          if (reinforcedPayload) {
+            selectedCrop = reinforcedCrop;
+            payload = reinforcedPayload;
+            diagnostics.reinforced += 1;
+          }
         }
+
+        const decodedCode = trackingCodesFromText(payload || "")[0] || null;
+        let object = null;
+        let origin = "";
+        if (decodedCode) { object = decodedCode; origin = "codigo"; diagnostics.byCode += 1; }
+        else if (textCodes.length === 1) { object = textCodes[0]; origin = "texto"; diagnostics.byText += 1; }
+        else diagnostics.missing += 1;
+
+        if (object) {
+          if (decodedCode && textCodes.length && !textCodes.includes(decodedCode)) {
+            diagnostics.divergent.push({ fileName: item.name, page: pageNumber, decodedCode, textCodes });
+          }
+          if (seenObjects.has(object)) diagnostics.duplicates.push({ object, fileName: item.name, page: pageNumber });
+          seenObjects.add(object);
+          if (keepCrops) crops.set(object, selectedCrop.toDataURL("image/png"));
+          audit.push({
+            fileName: item.name,
+            page: pageNumber,
+            object,
+            origin,
+            stripe,
+            payload: payload || "",
+            payloadStart: payload ? payload.slice(0, 80) : "",
+          });
+        }
+
+        processed += 1;
+        onProgress({ processed, totalPages, object, origin });
+      } finally {
+        releaseCanvas(crop);
+        releaseCanvas(reinforcedCrop);
+        try { page.cleanup?.(); } catch { /* limpeza best effort */ }
       }
 
-      const decodedCode = trackingCodesFromText(payload || "")[0] || null;
-      let object = null;
-      let origin = "";
-      if (decodedCode) { object = decodedCode; origin = "codigo"; diagnostics.byCode += 1; }
-      else if (textCodes.length === 1) { object = textCodes[0]; origin = "texto"; diagnostics.byText += 1; }
-      else diagnostics.missing += 1;
-
-      if (object) {
-        if (decodedCode && textCodes.length && !textCodes.includes(decodedCode)) {
-          diagnostics.divergent.push({ fileName: item.name, page: pageNumber, decodedCode, textCodes });
-        }
-        if (crops.has(object)) diagnostics.duplicates.push({ object, fileName: item.name, page: pageNumber });
-        crops.set(object, cropDataUrl);
-        audit.push({
-          fileName: item.name, page: pageNumber, object, origin, stripe,
-          payload: payload || "", payloadStart: payload ? payload.slice(0, 80) : "",
-        });
-      }
-      processed += 1;
-      onProgress({ processed, totalPages, object, origin });
       if (processed % 5 === 0) await new Promise((resolve) => setTimeout(resolve, 0));
     }
+    try { item.doc.cleanup?.(); } catch { /* limpeza best effort */ }
   }
+
   return { crops, audit, diagnostics, totalPages };
 }
 

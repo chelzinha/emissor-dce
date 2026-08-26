@@ -56,6 +56,17 @@ function publicSavedReturn(row, recovered = true) {
   };
 }
 
+function yieldToBrowser() {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+async function releasePdfDocuments(documents) {
+  for (const item of documents || []) {
+    try { item.doc?.cleanup?.(); } catch { /* limpeza best effort */ }
+    try { await item.doc?.destroy?.(); } catch { /* limpeza best effort */ }
+  }
+}
+
 export function validateReturnPackageCounts(csvRows, pdfDocuments, pdfFiles = []) {
   const csvCount = Number(Array.isArray(csvRows) ? csvRows.length : csvRows || 0);
   const pdfPageCount = (Array.isArray(pdfDocuments) ? pdfDocuments : [])
@@ -133,23 +144,42 @@ export async function analyzePortalReturn({ csvFile, pdfFiles, pdfjsLib, ZXing, 
   if (parsed.errors.length) throw new Error(parsed.errors.join("; "));
   if (!parsed.rows.length) throw new Error("O CSV do Portal nao possui objetos.");
 
+  const csvSha256 = await sha256Hex(csvText);
   onProgress?.({ stage: "pdf-load", message: "Lendo PDFs do Portal Postal" });
   const documents = await loadPdfDocuments(pdfFiles, pdfjsLib);
-  const packageCounts = validateReturnPackageCounts(parsed.rows, documents, pdfFiles);
-  onProgress?.({
-    stage: "package-check",
-    message: `Pacote conferido: ${number(packageCounts.csvCount)} objetos e ${number(packageCounts.pdfPageCount)} páginas`,
-  });
+  let matrixResult;
+  let packageCounts;
 
-  const matrixResult = await auditPdfDocuments(documents, ZXing, {
-    region,
-    onProgress: (progress) => onProgress?.({ stage: "matrix", ...progress }),
+  try {
+    packageCounts = validateReturnPackageCounts(parsed.rows, documents, pdfFiles);
+    onProgress?.({
+      stage: "package-check",
+      message: `Pacote conferido: ${number(packageCounts.csvCount)} objetos e ${number(packageCounts.pdfPageCount)} páginas`,
+    });
+
+    matrixResult = await auditPdfDocuments(documents, ZXing, {
+      region,
+      keepCrops: false,
+      onProgress: (progress) => onProgress?.({ stage: "matrix", ...progress }),
+    });
+  } finally {
+    await releasePdfDocuments(documents);
+  }
+
+  onProgress?.({
+    stage: "consolidating",
+    message: "Consolidando a auditoria",
+    detail: "Cruzando os SROs do CSV com as páginas analisadas",
   });
+  await yieldToBrowser();
   const merged = mergePortalRowsWithMatrix(parsed.rows, matrixResult.audit);
   const summary = summarizePortalReturn(merged);
+  await yieldToBrowser();
+
+  onProgress?.({ stage: "complete", message: "Auditoria concluída" });
   return {
     csvText,
-    csvSha256: await sha256Hex(csvText),
+    csvSha256,
     parsed,
     matrixResult,
     rows: merged,
