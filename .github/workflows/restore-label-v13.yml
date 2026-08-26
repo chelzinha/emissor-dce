@@ -1,0 +1,146 @@
+name: Restaurar layout v13
+
+on:
+  push:
+    branches:
+      - fix/restaurar-layout-etiqueta-v13
+    paths:
+      - .github/workflows/restore-label-v13.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/restaurar-layout-etiqueta-v13
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Aplicar integração
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              if old not in text:
+                  raise SystemExit(f'Trecho não encontrado em {path}: {old[:100]!r}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          # Gerador: mantém a recuperação otimizada de Data Matrix e troca apenas o motor visual.
+          replace_once(
+              'src/production-label-generator.js',
+              "import { loadPostalVendors } from './postal-vendors.js';\n",
+              "import { loadPostalVendors } from './postal-vendors.js';\nimport { renderUnifiedLabelV13, normalizeUnifiedLabelFontScale } from './production-label-layout-v13.js';\n",
+          )
+          replace_once(
+              'src/production-label-generator.js',
+              "async function renderLabel(pdf, fonts, object, crop, postageMarkDataUrl) {\n  const page = pdf.addPage([mm(PAGE_W), mm(PAGE_H)]);\n  const top = await drawPostal(page, pdf, fonts, object, crop, postageMarkDataUrl);\n  if (object.dce) await drawDace(page, pdf, fonts, object, top);\n  else drawSimplified(page, fonts, object, top);\n  return page;\n}\n",
+              "async function renderLabel(pdf, fonts, object, crop, postageMarkDataUrl, fontScale) {\n  return renderUnifiedLabelV13({\n    pdf,\n    fonts,\n    object,\n    matrixDataUrl: crop,\n    postageMarkDataUrl,\n    fontScale,\n  });\n}\n",
+          )
+          replace_once(
+              'src/production-label-generator.js',
+              "  const postageMarkDataUrl = assets?.labelSetup?.postageMarkDataUrl;\n  if (!assets?.labelSetup?.matrixRegion || !postageMarkDataUrl) throw new Error('Configure a área do Data Matrix e a chancela antes de gerar etiquetas.');\n",
+              "  const postageMarkDataUrl = assets?.labelSetup?.postageMarkDataUrl;\n  const fontScale = normalizeUnifiedLabelFontScale(assets?.labelSetup?.fontScale);\n  if (!assets?.labelSetup?.matrixRegion || !postageMarkDataUrl) throw new Error('Configure a área do Data Matrix e a chancela antes de gerar etiquetas.');\n",
+          )
+          replace_once(
+              'src/production-label-generator.js',
+              "    await renderLabel(pdf, fonts, object, crop, postageMarkDataUrl);\n",
+              "    await renderLabel(pdf, fonts, object, crop, postageMarkDataUrl, fontScale);\n",
+          )
+
+          # Modal de configuração: restaura a escala global de fontes do app local.
+          replace_once(
+              'src/label-setup-ui.js',
+              'import { completeLabelSetup, normalizeLabelSetup } from "./label-setup.js";\n',
+              'import { completeLabelSetup, normalizeLabelFontScale, normalizeLabelSetup } from "./label-setup.js";\n',
+          )
+          replace_once(
+              'src/label-setup-ui.js',
+              '        <div class="label-stamp-name" data-stamp-name>${h(setup.postageMarkName || "")}</div>\n        <div class="label-setup-checklist">',
+              '        <div class="label-stamp-name" data-stamp-name>${h(setup.postageMarkName || "")}</div>\n        <div class="label-font-scale">\n          <label for="label-font-scale">3. Escala das fontes</label>\n          <div class="label-font-scale-row"><input id="label-font-scale" type="number" min="0.80" max="1.10" step="0.05" value="${setup.fontScale.toFixed(2)}" data-font-scale><strong data-font-scale-value>${setup.fontScale.toFixed(2).replace(".", ",")}×</strong></div>\n          <small>0,80 reduz todos os textos sem mover caixas, barras ou linhas. Faixa permitida: 0,80 a 1,10.</small>\n        </div>\n        <div class="label-setup-checklist">',
+          )
+          replace_once(
+              'src/label-setup-ui.js',
+              '  const stampName = backdrop.querySelector("[data-stamp-name]");\n',
+              '  const stampName = backdrop.querySelector("[data-stamp-name]");\n  const fontScaleInput = backdrop.querySelector("[data-font-scale]");\n  const fontScaleValue = backdrop.querySelector("[data-font-scale-value]");\n',
+          )
+          replace_once(
+              'src/label-setup-ui.js',
+              '  const updateStampUi = () => {\n    checkStamp.classList.toggle("ok", Boolean(setup.postageMarkDataUrl));\n    stampPreview.innerHTML = setup.postageMarkDataUrl ? `<img src="${h(setup.postageMarkDataUrl)}" alt="Prévia da chancela">` : "<span>Nenhuma chancela carregada.</span>";\n    stampName.textContent = setup.postageMarkName || "";\n  };\n',
+              '  const updateStampUi = () => {\n    checkStamp.classList.toggle("ok", Boolean(setup.postageMarkDataUrl));\n    stampPreview.innerHTML = setup.postageMarkDataUrl ? `<img src="${h(setup.postageMarkDataUrl)}" alt="Prévia da chancela">` : "<span>Nenhuma chancela carregada.</span>";\n    stampName.textContent = setup.postageMarkName || "";\n  };\n  const updateFontScaleUi = () => {\n    const value = normalizeLabelFontScale(fontScaleInput.value);\n    fontScaleInput.value = value.toFixed(2);\n    fontScaleValue.textContent = `${value.toFixed(2).replace(".", ",")}×`;\n    setup = { ...setup, fontScale: value };\n  };\n',
+          )
+          replace_once(
+              'src/label-setup-ui.js',
+              '  backdrop.querySelector("[data-stamp]").addEventListener("change", async (event) => {\n',
+              '  fontScaleInput.addEventListener("change", updateFontScaleUi);\n  fontScaleInput.addEventListener("blur", updateFontScaleUi);\n\n  backdrop.querySelector("[data-stamp]").addEventListener("change", async (event) => {\n',
+          )
+          replace_once(
+              'src/label-setup-ui.js',
+              '        const completed = completeLabelSetup({ ...setup, matrixRegion: draftRegion, configuredAt: new Date().toISOString() });\n',
+              '        updateFontScaleUi();\n        const completed = completeLabelSetup({ ...setup, matrixRegion: draftRegion, fontScale: fontScaleInput.value, configuredAt: new Date().toISOString() });\n',
+          )
+
+          css = Path('src/label-setup-ui.css')
+          css.write_text(css.read_text(encoding='utf-8') + '\n.label-font-scale{margin-top:16px;border:1px solid #dfe7ef;border-radius:12px;background:#fff;padding:13px}.label-font-scale label{display:block;font-size:12px;font-weight:800;color:#26364c;margin-bottom:8px}.label-font-scale-row{display:flex;align-items:center;gap:10px}.label-font-scale-row input{width:110px;padding:9px 10px;border:1px solid #bdcbd8;border-radius:9px;font:700 15px/1.2 inherit}.label-font-scale-row strong{color:#09649a;min-width:58px}.label-font-scale small{display:block;margin-top:7px;color:#748296;line-height:1.45}\n', encoding='utf-8')
+
+          Path('tests/label-layout-v13.test.mjs').write_text(r'''import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import test from 'node:test';
+
+const layout = fs.readFileSync(new URL('../src/production-label-layout-v13.js', import.meta.url), 'utf8');
+const generator = fs.readFileSync(new URL('../src/production-label-generator.js', import.meta.url), 'utf8');
+const setup = fs.readFileSync(new URL('../src/label-setup.js', import.meta.url), 'utf8');
+const setupUi = fs.readFileSync(new URL('../src/label-setup-ui.js', import.meta.url), 'utf8');
+
+test('layout 10x15 mantém as medidas aprovadas no app local', () => {
+  assert.match(layout, /barObj: Object\.freeze\(\{ w: 80, h: 11\.5 \}\)/);
+  assert.match(layout, /barCep: Object\.freeze\(\{ w: 19\.7, h: 13, x: 62 \}\)/);
+  assert.match(layout, /simb: Object\.freeze\(\{ w: 15, h: 17 \}\)/);
+  assert.match(layout, /txt: 6\.0, bar: 7\.5, fs: 13/);
+  assert.match(layout, /nome: 9\.8/);
+  assert.match(layout, /cep: 21\.9/);
+});
+
+test('texto usa baseline fixo e escala sem alterar o grid', () => {
+  assert.match(layout, /y: topY\(yBase\)/);
+  assert.doesNotMatch(layout, /topY\(yBase\) - current/);
+  assert.match(layout, /DEFAULT_LABEL_FONT_SCALE = 0\.8/);
+  assert.match(layout, /Math\.min\(1\.1, Math\.max\(0\.8, base\)\)/);
+});
+
+test('geração de teste e volumes compartilham o motor v13', () => {
+  assert.match(generator, /renderUnifiedLabelV13/);
+  assert.match(generator, /normalizeUnifiedLabelFontScale\(assets\?\.labelSetup\?\.fontScale\)/);
+  assert.match(generator, /renderLabel\(pdf, fonts, object, crop, postageMarkDataUrl, fontScale\)/);
+});
+
+test('configuração oferece escala de 0,80 a 1,10', () => {
+  assert.match(setup, /DEFAULT_LABEL_FONT_SCALE = 0\.8/);
+  assert.match(setup, /fontScale: normalizeLabelFontScale\(source\.fontScale\)/);
+  assert.match(setupUi, /data-font-scale/);
+  assert.match(setupUi, /min="0\.80" max="1\.10"/);
+});
+''', encoding='utf-8')
+          PY
+      - name: Validar
+        run: |
+          npm ci
+          npm test
+          npm run build
+      - name: Remover workflow temporário e publicar ajustes
+        shell: bash
+        run: |
+          rm .github/workflows/restore-label-v13.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Restaurar layout v13 e escala de fontes"
+          git push origin HEAD:fix/restaurar-layout-etiqueta-v13
