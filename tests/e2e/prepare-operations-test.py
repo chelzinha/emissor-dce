@@ -74,6 +74,10 @@ source = source.replace(
     "  await expect(page.locator('[data-check-stamp]')).toHaveClass(/ok/, { timeout: 10_000 });\n  await expect(page.locator('[data-check-region]')).toHaveClass(/ok/, { timeout: 10_000 });\n  await page.locator('[data-font-scale]').fill('0.80');",
 )
 source = source.replace(
+    "  await expect(page.getByText('PRONTO PARA REGISTRO')).toBeVisible();",
+    "  await expect(page.locator('#save-portal-return')).toBeVisible({ timeout: 30_000 });",
+)
+source = source.replace(
     "  await page.getByRole('button', { name: 'Gerar Declaração Simplificada' }).click();\n  await expect(page.locator('[data-volumes=\"prod-active\"]')).toBeVisible({ timeout: 30_000 });",
     "  await page.getByRole('button', { name: 'Gerar Declaração Simplificada' }).click();\n  await expect(page.locator('[data-operation-nav]')).toBeVisible({ timeout: 30_000 });\n  if (await page.locator('[data-volumes=\"prod-active\"]').count() === 0) {\n    await clickStage(page, 7);\n  }\n  await expect(page.locator('[data-volumes=\"prod-active\"]')).toBeVisible({ timeout: 30_000 });",
 )
