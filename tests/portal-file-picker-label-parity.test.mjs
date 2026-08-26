@@ -61,8 +61,8 @@ test('grade 10x15 preserva medidas do gerador local v13', () => {
 
 test('etiqueta usa símbolos PAC e SEDEX e rótulos conferidos no Portal', () => {
   assert.match(generator, /renderUnifiedLabelV13/);
-  assert.match(layout, /family === 'SEDEX'/);
-  assert.match(layout, /family === 'PAC'/);
+  assert.match(layout, /serviceFamily\(service\) === 'SEDEX'/);
+  assert.match(layout, /s\.startsWith\('PAC'\)/);
   assert.match(layout, /modal: 'EXPRESSA'/);
   assert.match(layout, /modal: 'STANDARD'/);
   assert.match(layout, /drawRoutingSymbol/);
