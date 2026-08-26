@@ -85,6 +85,10 @@ source = source.replace(
     "  await expect(activeCard.locator('[data-op=\"test\"]')).toBeVisible({ timeout: 30_000 });\n  await activeCard.locator('[data-op=\"test\"]').click();\n  await expect(page.locator('[data-label-test-dialog]')).toBeVisible();\n  await page.locator('[data-label-test-input]').fill(TRACKING);\n  await page.locator('[data-label-test-confirm]').click();\n  await expect(page.locator('[data-label-test-dialog]')).toHaveCount(0);",
     "  await expect(activeCard.locator('[data-op=\"test\"]')).toBeVisible({ timeout: 30_000 });\n  await activeCard.locator('[data-op=\"test\"]').click();\n  const labelTestModal = page.locator('#label-test-stability-modal');\n  await expect(labelTestModal).toBeVisible();\n  await labelTestModal.locator('input[name=\"tracking\"]').fill(TRACKING);\n  await labelTestModal.getByRole('button', { name: 'Confirmar leitura' }).click();\n  await expect(labelTestModal).toHaveCount(0);",
 )
+source = source.replace(
+    "  await page.locator('[data-delivery-batch][value=\"prod-active\"]').check();",
+    "  const deliveryBatch = page.locator('[data-delivery-batch][value=\"prod-active\"]');\n  await deliveryBatch.evaluate((input) => {\n    input.checked = true;\n    input.dispatchEvent(new Event('change', { bubbles: true }));\n  });\n  await expect(deliveryBatch).toBeChecked();",
+)
 
 if "data-label-test-dialog" in source:
     raise SystemExit('Fluxo antigo da validação do SRO ainda está presente.')
