@@ -12,11 +12,7 @@ function nativeViewButton(view) {
 function activateNativeView(view) {
   const button = nativeViewButton(view);
   if (!button) return false;
-  button.dispatchEvent(new MouseEvent('click', {
-    bubbles: false,
-    cancelable: true,
-    view: window,
-  }));
+  button.click();
   return true;
 }
 
@@ -28,14 +24,14 @@ function saveOperationStage(stage) {
   } catch {}
 }
 
-function activateNativeViewWhenReady(view, attempts = 30) {
+function activateNativeViewWhenReady(view, attempts = 200) {
   let remaining = attempts;
   const tryActivate = () => {
     if (activateNativeView(view)) return;
     remaining -= 1;
     if (remaining > 0) setTimeout(tryActivate, 50);
   };
-  tryActivate();
+  setTimeout(tryActivate, 0);
 }
 
 document.addEventListener('click', (event) => {
@@ -44,7 +40,7 @@ document.addEventListener('click', (event) => {
 
   const stage = Number(stageProxy.dataset.operationStage || stageProxy.dataset.processStage || 0);
   const view = DYNAMIC_STAGE_VIEWS[stage];
-  if (!view || nativeViewButton(view)) return;
+  if (!view) return;
 
   event.preventDefault();
   event.stopImmediatePropagation();
