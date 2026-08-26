@@ -59,6 +59,10 @@ jobs:
           source = source.replace("[data-region-overlay]", "[data-overlay]")
           source = source.replace("[data-postage-mark]", "[data-stamp]")
           source = source.replace("[data-save-setup]", "[data-save]")
+          source = source.replace(
+              "  await page.locator('[data-font-scale]').fill('0.80');",
+              "  await expect(page.locator('[data-check-stamp]')).toHaveClass(/ok/, { timeout: 10_000 });\n  await expect(page.locator('[data-check-region]')).toHaveClass(/ok/);\n  await page.locator('[data-font-scale]').fill('0.80');",
+          )
           path.write_text(source, encoding='utf-8')
           PY
       - name: Percorrer o fluxo completo
