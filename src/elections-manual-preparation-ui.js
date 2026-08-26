@@ -2,10 +2,8 @@ import './elections-manual-preparation-ui.css';
 import { dataAction } from './api.js';
 
 const ROOT = document.querySelector('#elections-app');
-const INTERNAL_CHUNK = 25;
-const MIN_CHUNK = 5;
-const preparingLists = new Set();
 let campaignCache = null;
+let campaignPromise = null;
 let scheduled = false;
 
 const fmt = (value) => new Intl.NumberFormat('pt-BR').format(Number(value || 0));
@@ -21,48 +19,21 @@ function notify(message, type = 'info') {
   box._manualPreparationTimer = setTimeout(() => { box.className = 'elections-toast'; }, 4600);
 }
 
-function numberFromCell(cell) {
-  return Number(String(cell?.textContent || '').replace(/\D/g, '') || 0);
-}
-
-function rowInfo(row) {
-  const cells = row.querySelectorAll('td');
-  const button = row.querySelector('[data-clean]');
-  return {
-    row,
-    id: String(button?.dataset.clean || ''),
-    status: String(cells[1]?.textContent || '').trim().toUpperCase(),
-    total: numberFromCell(cells[2]),
-    ready: numberFromCell(cells[3]),
-    review: numberFromCell(cells[4]),
-  };
-}
-
-function statusPanel(page) {
-  let panel = page.querySelector('[data-base-technical-preparation]');
-  if (!panel) {
-    panel = document.createElement('div');
-    panel.dataset.baseTechnicalPreparation = 'true';
-    panel.className = 'base-technical-preparation';
-    const card = [...page.querySelectorAll(':scope > .card')].find((item) => item.querySelector('h2')?.textContent?.trim() === 'Bases recebidas');
-    card?.querySelector('.section-title')?.insertAdjacentElement('afterend', panel);
-  }
-  return panel;
-}
-
-function showTechnicalStatus(page, message = '', type = '') {
-  const panel = statusPanel(page);
-  if (!panel) return;
-  panel.className = `base-technical-preparation ${type}`.trim();
-  panel.textContent = message;
-  panel.hidden = !message;
-}
-
 async function currentCampaign() {
   const id = cid();
   if (!id) return null;
-  if (!campaignCache) campaignCache = await dataAction('campaigns.list');
-  return (Array.isArray(campaignCache) ? campaignCache : []).find((item) => String(item.id) === id) || null;
+  if (!campaignCache) {
+    if (!campaignPromise) {
+      campaignPromise = dataAction('campaigns.list')
+        .then((rows) => {
+          campaignCache = Array.isArray(rows) ? rows : [];
+          return campaignCache;
+        })
+        .finally(() => { campaignPromise = null; });
+    }
+    await campaignPromise;
+  }
+  return campaignCache.find((item) => String(item.id) === id) || null;
 }
 
 function manualCleanedValue(campaign) {
@@ -118,44 +89,70 @@ async function saveManualCleaned(event) {
   }
 }
 
+function panelMarkup(value) {
+  return `<div class="manual-preparation-copy">
+    <strong>Quantidade higienizada</strong>
+    <span>Este indicador é informado manualmente e pode ser atualizado sempre que necessário.</span>
+    <small>${value ? `Quantidade atual: ${fmt(value)} cadastros` : 'Nenhuma quantidade manual informada'}</small>
+  </div>
+  <form class="manual-preparation-form" data-manual-preparation-form>
+    <label><span>Cadastros higienizados</span><input name="addressCleaned" type="number" min="0" step="1" value="${value}" required></label>
+    <button type="submit" class="primary">Salvar quantidade</button>
+  </form>`;
+}
+
 async function mountManualEditor(page) {
   const basesCard = [...page.querySelectorAll(':scope > .card')].find((item) => item.querySelector('h2')?.textContent?.trim() === 'Bases recebidas');
-  if (!basesCard || page.querySelector('[data-manual-preparation-panel]')) return;
+  if (!basesCard) return;
+
+  const existing = [...page.querySelectorAll('[data-manual-preparation-panel]')];
+  existing.slice(1).forEach((panel) => panel.remove());
+  if (existing[0]) return;
+
+  const panel = document.createElement('section');
+  panel.className = 'manual-preparation-panel';
+  panel.dataset.manualPreparationPanel = 'true';
+  panel.dataset.loading = 'true';
+  panel.innerHTML = '<div class="manual-preparation-copy"><strong>Quantidade higienizada</strong><span>Carregando indicador…</span></div>';
+  basesCard.insertAdjacentElement('beforebegin', panel);
 
   try {
     const campaign = await currentCampaign();
+    if (!panel.isConnected) return;
     const value = manualCleanedValue(campaign);
-    const panel = document.createElement('section');
-    panel.className = 'manual-preparation-panel';
-    panel.dataset.manualPreparationPanel = 'true';
-    panel.innerHTML = `<div class="manual-preparation-copy">
-      <strong>Quantidade higienizada</strong>
-      <span>Este indicador é informado manualmente e pode ser atualizado sempre que necessário. Ele não depende do processamento técnico dos arquivos.</span>
-      <small>${value ? `Quantidade atual: ${fmt(value)} cadastros` : 'Nenhuma quantidade manual informada'}</small>
-    </div>
-    <form class="manual-preparation-form" data-manual-preparation-form>
-      <label><span>Cadastros higienizados</span><input name="addressCleaned" type="number" min="0" step="1" value="${value}" required></label>
-      <button type="submit" class="primary">Salvar quantidade</button>
-    </form>`;
-    basesCard.insertAdjacentElement('beforebegin', panel);
+    panel.innerHTML = panelMarkup(value);
+    delete panel.dataset.loading;
     panel.querySelector('[data-manual-preparation-form]')?.addEventListener('submit', saveManualCleaned);
   } catch (error) {
+    if (panel.isConnected) panel.remove();
     console.warn('Não foi possível carregar o indicador manual de higienização.', error);
   }
 }
 
 function simplifyTable(page) {
   page.classList.add('bases-manual-mode');
+  page.querySelectorAll('[data-base-technical-preparation], .base-cleaning-progress-row, #base-operation-status').forEach((node) => node.remove());
+
   const table = [...page.querySelectorAll('table')].find((item) => item.querySelector('[data-clean]'));
   if (!table) return;
 
-  const indexes = [3, 4, 5];
+  const hiddenIndexes = [3, 4, 5];
   table.querySelectorAll('tr').forEach((row) => {
     [...row.children].forEach((cell, index) => {
-      cell.classList.toggle('manual-preparation-hidden-column', indexes.includes(index));
+      cell.classList.toggle('manual-preparation-hidden-column', hiddenIndexes.includes(index));
     });
   });
-  table.querySelectorAll('.base-cleaning-progress-row').forEach((row) => row.remove());
+
+  table.querySelectorAll('tbody tr').forEach((row) => {
+    if (!row.querySelector('[data-clean]')) return;
+    const chip = row.querySelector('td:nth-child(2) .status');
+    const current = String(chip?.textContent || '').trim().toUpperCase();
+    if (!chip) return;
+    setText(chip, current.includes('EXPORT') ? 'Exportada' : 'Recebida');
+    chip.classList.toggle('ok', current.includes('EXPORT'));
+    chip.classList.toggle('warn', !current.includes('EXPORT'));
+    chip.classList.remove('bad');
+  });
 }
 
 function rewriteCopy(page) {
@@ -163,108 +160,13 @@ function rewriteCopy(page) {
   setText(head?.querySelector('p:not(.eyebrow)'), 'Receba a base completa e registre manualmente os quantitativos da preparação antes de seguir para o Portal Postal.');
 
   const received = [...page.querySelectorAll(':scope > .card')].find((card) => card.querySelector('h2')?.textContent?.trim() === 'Bases recebidas');
-  setText(received?.querySelector('.section-title p'), 'As bases ficam registradas aqui. A quantidade higienizada é controlada manualmente no painel acima.');
+  setText(received?.querySelector('.section-title p'), 'As bases importadas ficam registradas aqui. Nenhuma higienização automática é executada nesta tela.');
 
   const exportCard = page.querySelector('#base-export-card');
-  setText(exportCard?.querySelector('h2'), 'Definir dados da postagem');
-  setText(exportCard?.querySelector('.section-title p'), 'Selecione uma base disponível, o serviço e o conteúdo para gerar o CSV do Portal Postal.');
-  setText(exportCard?.querySelector('label.field span'), 'Base disponível');
   const notice = exportCard?.querySelector('.notice');
-  if (notice?.textContent?.includes('higienização')) {
-    setText(notice, 'A base está sendo preparada internamente para o Portal Postal. Não é necessária nenhuma ação de higienização nesta tela.');
+  if (notice && /higieniza|preparad/i.test(notice.textContent || '')) {
+    setText(notice, 'A base está registrada. A geração do arquivo do Portal Postal será tratada em uma ação específica.');
   }
-}
-
-function setRowPresentation(info) {
-  const chip = info.row.querySelector('td:nth-child(2) .status');
-  if (!chip) return;
-  if (info.total > 0 && info.ready === info.total && info.review === 0) {
-    setText(chip, 'Disponível para Portal');
-    chip.classList.add('ok');
-    chip.classList.remove('warn', 'bad');
-    return;
-  }
-  if (info.review > 0) {
-    setText(chip, 'Ajustes necessários');
-    chip.classList.add('warn');
-    chip.classList.remove('ok', 'bad');
-    return;
-  }
-  if (preparingLists.has(info.id)) {
-    setText(chip, 'Preparando arquivo');
-    chip.classList.add('warn');
-    chip.classList.remove('ok', 'bad');
-  }
-}
-
-async function prepareList(page, info) {
-  if (!info.id || preparingLists.has(info.id) || info.total <= 0 || info.ready + info.review >= info.total) return;
-  preparingLists.add(info.id);
-  let chunkSize = INTERNAL_CHUNK;
-  let processed = info.ready + info.review;
-  setRowPresentation(info);
-
-  try {
-    while (true) {
-      const rows = await dataAction('addressRows.list', {
-        campaignId: cid(),
-        addressListId: info.id,
-        status: 'RAW',
-        limit: chunkSize,
-      });
-      if (!rows.length) break;
-
-      const ids = rows.map((row) => String(row.id || '')).filter(Boolean);
-      if (!ids.length) break;
-      showTechnicalStatus(page, `Preparando ${fmt(Math.min(info.total, processed + ids.length))} de ${fmt(info.total)} cadastros para o Portal Postal…`);
-
-      try {
-        const result = await dataAction('cleaning.process', {
-          campaignId: cid(),
-          addressListId: info.id,
-          rowIds: ids,
-        });
-        processed += Number(result?.summary?.processed || ids.length);
-        chunkSize = INTERNAL_CHUNK;
-      } catch (error) {
-        if (/504|timeout|tempo/i.test(String(error?.message || '')) && chunkSize > MIN_CHUNK) {
-          chunkSize = Math.max(MIN_CHUNK, Math.floor(chunkSize / 2));
-          await new Promise((resolve) => setTimeout(resolve, 700));
-          continue;
-        }
-        throw error;
-      }
-    }
-
-    const review = await dataAction('addressRows.list', {
-      campaignId: cid(),
-      addressListId: info.id,
-      status: 'REVIEW',
-      limit: 1,
-    });
-
-    if (review.length) {
-      showTechnicalStatus(page, 'O arquivo foi recebido, mas contém cadastros incompatíveis com o layout do Portal Postal. Envie uma base corrigida para seguir.', 'warn');
-      return;
-    }
-
-    showTechnicalStatus(page, 'Base preparada para o Portal Postal.', '');
-    setTimeout(() => location.reload(), 500);
-  } catch (error) {
-    showTechnicalStatus(page, `Não foi possível preparar o arquivo para o Portal Postal: ${error.message}`, 'error');
-  } finally {
-    preparingLists.delete(info.id);
-  }
-}
-
-function preparePendingBases(page) {
-  const infos = [...page.querySelectorAll('tbody tr')]
-    .filter((row) => row.querySelector('[data-clean]'))
-    .map(rowInfo);
-
-  infos.forEach(setRowPresentation);
-  const pending = infos.find((info) => info.total > 0 && info.ready + info.review < info.total && !preparingLists.has(info.id));
-  if (pending) prepareList(page, pending);
 }
 
 function mount() {
@@ -273,7 +175,6 @@ function mount() {
   simplifyTable(page);
   rewriteCopy(page);
   mountManualEditor(page);
-  preparePendingBases(page);
 }
 
 document.addEventListener('click', (event) => {
@@ -286,7 +187,7 @@ document.addEventListener('click', (event) => {
 ROOT?.addEventListener('change', (event) => {
   if (event.target?.id === 'campaign-select') {
     campaignCache = null;
-    preparingLists.clear();
+    campaignPromise = null;
     scheduleMount();
   }
 });
