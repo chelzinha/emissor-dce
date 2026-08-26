@@ -148,6 +148,13 @@ function simplifyTable(page) {
     const chip = row.querySelector('td:nth-child(2) .status');
     const current = String(chip?.textContent || '').trim().toUpperCase();
     if (!chip) return;
+
+    if (current === 'READY') {
+      chip.classList.add('ok');
+      chip.classList.remove('warn', 'bad');
+      return;
+    }
+
     setText(chip, current.includes('EXPORT') ? 'Exportada' : 'Recebida');
     chip.classList.toggle('ok', current.includes('EXPORT'));
     chip.classList.toggle('warn', !current.includes('EXPORT'));
