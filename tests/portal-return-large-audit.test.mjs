@@ -19,6 +19,14 @@ test("leitor processa o canvas diretamente sem converter cada página em base64"
   assert.doesNotMatch(matrix, /for \(const scale of \[1, 3\]\)/);
 });
 
+test("PDFs são sondados e reabertos sob demanda, mantendo apenas um documento ativo", () => {
+  assert.match(matrix, /function createLazyPdfDocument/);
+  assert.match(matrix, /const probe = await pdfjsLib\.getDocument/);
+  assert.match(matrix, /await destroyPdfDocument\(probe\)/);
+  assert.match(matrix, /try \{ await item\.doc\.cleanup\?\.\(\); \}/);
+  assert.match(matrix, /activeDocument = null/);
+});
+
 test("serviço libera os documentos e informa a consolidação final", () => {
   assert.match(service, /keepCrops: false/);
   assert.match(service, /releasePdfDocuments/);
