@@ -22,8 +22,11 @@ function setupProject() {
     configureSheet_(sheet, DCE_CONFIG.SHEETS[name]);
   });
 
-  spreadsheet.getSheets().forEach(function(sheet) {
-    if (expectedNames.indexOf(sheet.getName()) === -1 && spreadsheet.getSheets().length > 1) {
+  // Nunca apague abas desconhecidas: elas podem conter bases auxiliares,
+  // importações históricas ou controles manuais. Remova somente uma aba
+  // padrão vazia criada automaticamente pelo Google Sheets.
+  spreadsheet.getSheets().slice().forEach(function(sheet) {
+    if (isDisposableDefaultSheet_(sheet, expectedNames) && spreadsheet.getSheets().length > 1) {
       spreadsheet.deleteSheet(sheet);
     }
   });
@@ -34,6 +37,14 @@ function setupProject() {
     rootFolderId: folderId,
     rootFolderUrl: DriveApp.getFolderById(folderId).getUrl()
   };
+}
+
+function isDisposableDefaultSheet_(sheet, expectedNames) {
+  const name = String(sheet.getName() || '');
+  const defaultNames = ['Sheet1', 'Página1', 'Planilha1'];
+  if (expectedNames.indexOf(name) !== -1 || defaultNames.indexOf(name) === -1) return false;
+  if (sheet.getLastRow() > 1 || sheet.getLastColumn() > 1) return false;
+  return String(sheet.getRange(1, 1).getValue() || '').trim() === '';
 }
 
 function setApiToken(token) {

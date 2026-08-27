@@ -1,0 +1,13 @@
+- [ ] Merge da correção
+- [ ] Deploy do Netlify concluído
+- [ ] Apps Script atualizado na implantação existente
+- [ ] Backup final da planilha criado
+- [ ] Reset da campanha executado
+- [ ] Campanha reconstruída
+- [ ] 9.999 endereços inseridos
+- [ ] 5.368 objetos postais inseridos
+- [ ] 2.353 eventos de rastreamento inseridos
+- [ ] 134 eventos operacionais inseridos
+- [ ] 1.062 lançamentos financeiros parciais inseridos
+- [ ] Validação final concluída
+- [ ] Recursos temporários removidos

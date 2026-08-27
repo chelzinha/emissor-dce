@@ -88,6 +88,14 @@ function doPost(event) {
       'operation.closure.close': function() { return operationClosureClose_(user.id, payload); },
       'operation.closure.reopen': function() { return operationClosureReopen_(user.id, payload); },
       'dashboard.daily': function() { return getDailySummary_(user.id, payload); },
+      'historical.reset': function() { return historicalReset_(user.id, payload); },
+      'historical.campaign': function() { return historicalCampaign_(user.id, payload); },
+      'historical.addresses': function() { return historicalAddresses_(user.id, payload); },
+      'historical.lot': function() { return historicalLot_(user.id, payload); },
+      'historical.tracking': function() { return historicalTracking_(user.id, payload); },
+      'historical.events': function() { return historicalEvents_(user.id, payload); },
+      'historical.finance': function() { return historicalFinance_(user.id, payload); },
+      'historical.finalize': function() { return historicalFinalize_(user.id, payload); },
       'file.get': function() { return readOwnedXmlFile_(user.id, payload && payload.fileId); }
     };
     if (!handlers[action]) throw new Error('Acao nao suportada.');

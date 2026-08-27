@@ -1,0 +1,1 @@
+A carga histórica permanece fora do repositório. O código contém somente o identificador de um arquivo privado do Google Drive. O endpoint temporário exige token secreto em variável de ambiente e deve ser removido após a validação final.
