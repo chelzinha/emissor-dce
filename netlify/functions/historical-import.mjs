@@ -7,6 +7,54 @@ const MIGRATION_USER = Object.freeze({
   email: "chelzinha@gmail.com",
 });
 
+const ALLOWED_ACTIONS = new Set([
+  "system.health",
+  "campaign.get",
+  "campaign.upsert",
+  "addressList.start",
+  "addressList.append",
+  "addressList.finish",
+  "addressLists.list",
+  "portalReturn.start",
+  "portalReturn.append",
+  "portalReturn.finish",
+  "portalReturns.list",
+  "postalObjects.list",
+  "production.prepare",
+  "production.list",
+  "production.matrix.confirm",
+  "production.labelTest.data",
+  "production.labelTest.approve",
+  "production.print.confirm",
+  "production.handoff.confirm",
+  "production.posting.confirm",
+  "production.posting.list",
+  "volumes.list",
+  "tracking.updates.append",
+  "tracking.summary",
+  "tracking.events.list",
+  "operation.record",
+  "operations.list",
+  "dashboard.daily",
+]);
+
+function normalizeRequest(body) {
+  if (body.action === "append") {
+    return {
+      action: "portalReturn.append",
+      payload: {
+        campaignId: String(body.campaignId || ""),
+        portalReturnId: String(body.portalReturnId || ""),
+        rows: Array.isArray(body.rows) ? body.rows : [],
+      },
+    };
+  }
+  return {
+    action: String(body.action || ""),
+    payload: body.payload && typeof body.payload === "object" ? body.payload : {},
+  };
+}
+
 export default async function handler(req) {
   if (req.method !== "POST") return json({ ok: false, error: "Método não permitido" }, 405);
 
@@ -16,19 +64,10 @@ export default async function handler(req) {
 
   try {
     const body = await parseJson(req);
-    if (body.action !== "append") throw new Error("Ação de migração inválida");
+    const request = normalizeRequest(body);
+    if (!ALLOWED_ACTIONS.has(request.action)) throw new Error("Ação de migração inválida");
 
-    const campaignId = String(body.campaignId || "");
-    const portalReturnId = String(body.portalReturnId || "");
-    const rows = Array.isArray(body.rows) ? body.rows : [];
-    if (!campaignId || !portalReturnId) throw new Error("Operação e retorno são obrigatórios");
-    if (!rows.length || rows.length > 200) throw new Error("O bloco deve conter de 1 a 200 objetos");
-
-    const data = await callOperationsAppsScript(
-      "portalReturn.append",
-      { campaignId, portalReturnId, rows },
-      MIGRATION_USER,
-    );
+    const data = await callOperationsAppsScript(request.action, request.payload, MIGRATION_USER);
     return json({ ok: true, data });
   } catch (error) {
     return json({ ok: false, error: publicError(error) }, 400);
