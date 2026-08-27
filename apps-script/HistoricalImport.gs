@@ -84,6 +84,13 @@ function historicalExistingIds_(sheetName) {
   return result;
 }
 
+function historicalEnsureAppendCapacity_(sheetName, quantity) {
+  const sheet = getSheet_(sheetName);
+  const requiredRows = sheet.getLastRow() + Number(quantity || 0);
+  const missingRows = requiredRows - sheet.getMaxRows();
+  if (missingRows > 0) sheet.insertRowsAfter(sheet.getMaxRows(), missingRows);
+}
+
 function historicalAppendMissing_(sheetName, records) {
   const rows = Array.isArray(records) ? records : [];
   if (!rows.length) return { received: 0, inserted: 0, duplicates: 0 };
@@ -94,6 +101,7 @@ function historicalAppendMissing_(sheetName, records) {
     existing[id] = true;
     return true;
   });
+  historicalEnsureAppendCapacity_(sheetName, missing.length);
   appendObjects_(sheetName, missing);
   return { received: rows.length, inserted: missing.length, duplicates: rows.length - missing.length };
 }
