@@ -13,13 +13,29 @@ function historicalRequire_(userId, payload) {
   return campaignId;
 }
 
-function historicalClearDataRows_(sheetName) {
+function historicalDeleteCampaignRows_(sheetName) {
   const sheet = getSheet_(sheetName);
-  const lastRow = sheet.getLastRow();
-  const lastColumn = sheet.getLastColumn();
-  if (lastRow > 1 && lastColumn > 0) {
-    sheet.getRange(2, 1, lastRow - 1, lastColumn).clearContent();
+  const rows = sheetRows_(sheet).filter(function(row) {
+    return String(row.CAMPAIGN_ID || '') === HISTORICAL_IMPORT_CAMPAIGN_ID;
+  });
+  if (!rows.length) return 0;
+
+  const rowNumbers = rows.map(function(row) { return Number(row._rowNumber); }).sort(function(a, b) { return b - a; });
+  let deleted = 0;
+  let cursor = 0;
+  while (cursor < rowNumbers.length) {
+    const highest = rowNumbers[cursor];
+    let lowest = highest;
+    cursor += 1;
+    while (cursor < rowNumbers.length && rowNumbers[cursor] === lowest - 1) {
+      lowest = rowNumbers[cursor];
+      cursor += 1;
+    }
+    const quantity = highest - lowest + 1;
+    sheet.deleteRows(lowest, quantity);
+    deleted += quantity;
   }
+  return deleted;
 }
 
 function historicalDeleteTemporarySheets_() {
@@ -40,18 +56,23 @@ function historicalReadArchiveEntry_(payload) {
   const jsonText = entryName.slice(-3).toLowerCase() === '.gz'
     ? Utilities.ungzip(target).getDataAsString('UTF-8')
     : target.getDataAsString('UTF-8');
-  return safeJsonParse_(jsonText, null);
+  const parsed = safeJsonParse_(jsonText, null);
+  if (!parsed) throw new Error('Conteúdo inválido na etapa: ' + entryName);
+  return parsed;
 }
 
 function historicalReset_(userId, payload) {
   historicalRequire_(userId, payload);
-  HISTORICAL_IMPORT_SHEETS.forEach(historicalClearDataRows_);
+  const deletedBySheet = {};
+  HISTORICAL_IMPORT_SHEETS.forEach(function(sheetName) {
+    deletedBySheet[sheetName] = historicalDeleteCampaignRows_(sheetName);
+  });
   historicalDeleteTemporarySheets_();
   const properties = getScriptProperties_().getProperties();
   Object.keys(properties).forEach(function(key) {
     if (key.indexOf('HISTORICAL_IMPORT_') === 0) getScriptProperties_().deleteProperty(key);
   });
-  return { ok: true, clearedSheets: HISTORICAL_IMPORT_SHEETS.length };
+  return { ok: true, deletedBySheet: deletedBySheet };
 }
 
 function historicalExistingIds_(sheetName) {
