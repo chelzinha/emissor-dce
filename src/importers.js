@@ -1,7 +1,8 @@
 import Papa from "papaparse";
+import { normalizeService } from "./postal-services.js";
 
 export const FIELD_DEFINITIONS = [
-  ["trackingCode", "Código SRO", true], ["service", "Serviço", true],
+  ["trackingCode", "Código SRO (PAC e SEDEX)", false], ["service", "Serviço", true],
   ["recipientName", "Destinatário", true], ["recipientDocumentType", "Tipo do documento", false],
   ["recipientDocument", "CPF/CNPJ/Outro", true],
   ["street", "Logradouro", true], ["number", "Número", true], ["complement", "Complemento", false],
@@ -13,12 +14,12 @@ export const FIELD_DEFINITIONS = [
 
 const ALIASES = {
   trackingCode: ["OBJETO", "OBJETO_POSTAL", "NUMERO_ETIQUETA", "CODIGO_RASTREAMENTO", "SRO"],
-  service: ["SERVICO", "TIPO_SERVICO"], recipientName: ["DESTINATARIO", "NOME_DESTINATARIO", "NOME"],
+  service: ["SERVICO", "TIPO_SERVICO", "SERVICO_POSTAL"], recipientName: ["DESTINATARIO", "NOME_DESTINATARIO", "NOME"],
   recipientDocumentType: ["TIPO_DOCUMENTO", "DOCUMENT_TYPE", "TIPO_DOC"],
   recipientDocument: ["CPF_CNPJ", "CPFCNPJ", "DOCUMENTO", "CPF", "CNPJ"], street: ["ENDERECO", "LOGRADOURO"],
   number: ["NUM", "NUMERO"], complement: ["COMPL", "COMPLEMENTO"], district: ["BAIRRO"],
   city: ["CIDADE", "MUNICIPIO"], uf: ["UF", "ESTADO"], zip: ["CEP"], cityCode: ["CODIGO_IBGE", "IBGE", "CMUN"],
-  email: ["EMAIL", "E_MAIL"], reference: ["NF_PEDIDO", "PEDIDO", "REFERENCIA", "CODIGO_PP"],
+  email: ["EMAIL", "E_MAIL"], reference: ["NF_PEDIDO", "PEDIDO", "REFERENCIA", "CODIGO_PP", "IDENTIFICADOR"],
   description: ["CONTEUDO", "DESCRICAO", "PRODUTO"], ncm: ["NCM"], quantity: ["QUANTIDADE", "QTD"],
   unitValue: ["VALOR_UNITARIO", "VALOR", "VUNCOM"],
 };
@@ -110,7 +111,7 @@ export function mapRows(rows, mapping, defaults = {}) {
     return {
       localId: crypto.randomUUID(), selected: true,
       reference: String(get(row, "reference") || trackingCode || index + 1), trackingCode,
-      service: String(get(row, "service") || defaults.service || "").toUpperCase().includes("SEDEX") ? "SEDEX" : "PAC",
+      service: normalizeService(get(row, "service"), defaults.service),
       document: {
         recipient: {
           documentType, document: doc,

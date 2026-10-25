@@ -1,3 +1,18 @@
+// Serviços aceitos na emissão própria. MDPB com chancela não possui SRO.
+const DCE_ALLOWED_SERVICES_ = ['PAC', 'SEDEX', 'MDPB LOCAL', 'MDPB ESTADUAL', 'MDPB NACIONAL'];
+
+function remittanceRequiresTracking_(service) {
+  return ['MDPB LOCAL', 'MDPB ESTADUAL', 'MDPB NACIONAL'].indexOf(String(service || '')) === -1;
+}
+
+// Remessa sem SRO usa a referência informada no arquivo como chave contra importação repetida.
+// Referência só numérica é a posição da linha e não identifica a remessa.
+function untrackedReferenceKey_(service, trackingCode, reference) {
+  const ref = String(reference || '').trim().toUpperCase();
+  if (String(trackingCode || '') || remittanceRequiresTracking_(service) || !ref || /^\d+$/.test(ref)) return '';
+  return String(service) + '|' + ref;
+}
+
 function startImport_(userId, payload) {
   const fileName = String(payload.fileName || 'importacao').slice(0, 160);
   const fileType = String(payload.fileType || '').toUpperCase().slice(0, 10);
@@ -24,9 +39,12 @@ function appendImport_(userId, payload) {
     throw new Error(`Cada bloco deve conter de 1 a ${DCE_CONFIG.MAX_IMPORT_CHUNK} registros.`);
   }
   const existingTracking = {};
+  const existingUntrackedReference = {};
   rowsForUser_('REMITTANCES', userId).forEach(function(row) {
     const code = String(row.TRACKING_CODE || '').toUpperCase();
     if (code) existingTracking[code] = true;
+    const untrackedKey = untrackedReferenceKey_(row.SERVICE, code, row.REFERENCE);
+    if (untrackedKey && ['READY', 'RESERVED', 'AUTHORIZED'].indexOf(String(row.STATUS)) !== -1) existingUntrackedReference[untrackedKey] = true;
   });
   const now = nowIso_();
   const records = rows.map(function(source, index) {
@@ -35,6 +53,11 @@ function appendImport_(userId, payload) {
       normalized.errors.push('Código de rastreamento já importado.');
     }
     if (normalized.trackingCode) existingTracking[normalized.trackingCode] = true;
+    const untrackedKey = untrackedReferenceKey_(normalized.service, normalized.trackingCode, source && source.reference);
+    if (untrackedKey && existingUntrackedReference[untrackedKey]) {
+      normalized.errors.push('Referência já importada para remessa sem SRO.');
+    }
+    if (untrackedKey) existingUntrackedReference[untrackedKey] = true;
     return {
       ID: uuid_(), USER_ID: userId, IMPORT_ID: importId,
       TRACKING_CODE: normalized.trackingCode, SERVICE: normalized.service,
@@ -71,8 +94,8 @@ function normalizeImportedRemittance_(source) {
   const trackingCode = String(source.trackingCode || '').replace(/\s/g, '').toUpperCase();
   const service = String(source.service || '').trim().toUpperCase();
   const document = source.document || source;
-  if (!/^[A-Z]{2}\d{9}BR$/.test(trackingCode)) errors.push('Código SRO inválido.');
-  if (['PAC', 'SEDEX'].indexOf(service) === -1) errors.push('Serviço deve ser PAC ou SEDEX.');
+  if (trackingCode ? !/^[A-Z]{2}\d{9}BR$/.test(trackingCode) : remittanceRequiresTracking_(service)) errors.push('Código SRO inválido.');
+  if (DCE_ALLOWED_SERVICES_.indexOf(service) === -1) errors.push('Serviço deve ser PAC, SEDEX, MDPB LOCAL, MDPB ESTADUAL ou MDPB NACIONAL.');
   if (!document.recipient || !String(document.recipient.name || '').trim()) errors.push('Destinatário obrigatório.');
   const recipientDocument = normalizeRecipientDocument_(document.recipient && document.recipient.document, document.recipient && document.recipient.documentType);
   if (!recipientDocument.valid) errors.push('Documento do destinatário inválido.');

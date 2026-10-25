@@ -56,9 +56,10 @@ function prepareBatch_(userId, payload) {
         CREATED_AT: now, UPDATED_AT: now
       };
     }));
-    remittances.forEach(function(row) {
-      updateRow_('REMITTANCES', row._rowNumber, { STATUS: 'RESERVED', UPDATED_AT: now });
-    });
+    // Gravação em bloco: lotes grandes (centenas de remessas) não estouram o tempo da requisição.
+    writeRowsInBlocks_('REMITTANCES', remittances.map(function(row) {
+      return { rowNumber: row._rowNumber, changes: { STATUS: 'RESERVED', UPDATED_AT: now } };
+    }));
     return { id: batchId, environment: environment, documents: documents };
   } finally {
     lock.releaseLock();
@@ -173,4 +174,35 @@ function recordDceEvent_(userId, payload) {
     if (remittance) updateRow_('REMITTANCES', remittance._rowNumber, { STATUS: 'CANCELLED', UPDATED_AT: nowIso_() });
   }
   return { id: dceId, status: status };
+}
+
+
+// Atualiza várias linhas com uma leitura e uma gravação por faixa contígua.
+// Fica neste arquivo para o projeto fiscal não depender dos arquivos da operação.
+function writeRowsInBlocks_(sheetName, updates) {
+  const items = (updates || []).filter(function(item) {
+    return item && Number(item.rowNumber) >= 2 && item.changes;
+  }).sort(function(a, b) { return Number(a.rowNumber) - Number(b.rowNumber); });
+  if (!items.length) return;
+  const sheet = getSheet_(sheetName);
+  const map = headerMap_(sheet);
+  const width = sheet.getLastColumn();
+  let cursor = 0;
+  while (cursor < items.length) {
+    let end = cursor + 1;
+    while (end < items.length && Number(items[end].rowNumber) === Number(items[end - 1].rowNumber) + 1) end += 1;
+    const firstRow = Number(items[cursor].rowNumber);
+    const values = sheet.getRange(firstRow, 1, end - cursor, width).getValues();
+    for (let index = cursor; index < end; index += 1) {
+      const target = values[index - cursor];
+      const changes = items[index].changes;
+      Object.keys(changes).forEach(function(key) {
+        if (map[key] == null) return;
+        const raw = changes[key];
+        target[map[key]] = raw == null ? '' : (typeof raw === 'object' ? JSON.stringify(raw) : raw);
+      });
+    }
+    sheet.getRange(firstRow, 1, values.length, width).setValues(values);
+    cursor = end;
+  }
 }

@@ -1,3 +1,5 @@
+import { isAllowedService, requiresTrackingCode } from "./postal-services.js";
+
 export function digits(value) { return String(value || "").replace(/\D/g, ""); }
 
 export function isCnpj(value) {
@@ -33,8 +35,9 @@ export function validateRemittance(row) {
   const r = row.document?.recipient || {};
   const a = r.address || {};
   const item = row.document?.items?.[0] || {};
-  if (!/^[A-Z]{2}\d{9}BR$/.test(row.trackingCode || "")) errors.push("SRO");
-  if (!["PAC", "SEDEX"].includes(row.service)) errors.push("serviço");
+  const trackingCode = String(row.trackingCode || "");
+  if (trackingCode ? !/^[A-Z]{2}\d{9}BR$/.test(trackingCode) : requiresTrackingCode(row.service)) errors.push("SRO");
+  if (!isAllowedService(row.service)) errors.push("serviço");
   if (!r.name) errors.push("destinatário");
   const documentValid = r.documentType === "CNPJ" ? isCnpj(r.document)
     : r.documentType === "idOutros" ? isIdOutros(r.document)
