@@ -1,0 +1,137 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import { AUTHORIZE_SIZE, chunk, estimateSeconds, PauseError, pendingBatchesFor, ROUND_SIZE, runAuthorization, SAVE_SIZE, summarizeReady } from "../src/authorize-engine.js";
+import { mapRows } from "../src/importers.js";
+import { RECIPIENT_ID_PLACEHOLDER, validateRemittance } from "../src/validation.js";
+import { normalizeDceDocument } from "../netlify/functions/_shared/validation.mjs";
+import { buildUnsignedDce } from "../netlify/functions/_shared/xml.mjs";
+
+const noWait = async () => {};
+const doc = (id, status = "PREPARED") => ({ reference: id, status, recipient: { name: `DEST ${id}` } });
+
+function fakeDeps({ failAuthorize = 0, failSave = 0, rejectIds = [], invalidIds = [] } = {}) {
+  const calls = { prepare: [], authorize: [], save: [] };
+  let numbering = 0;
+  return {
+    calls,
+    deps: {
+      getBatch: async (batchId) => ({ documents: [doc("R1", "AUTHORIZED"), doc("R2", "PREPARED"), doc("R3", "ERROR"), doc("R4", "REJECTED")].map((d) => ({ ...d, batchId })) }),
+      prepare: async (ids) => { calls.prepare.push(ids.length); numbering += ids.length; return { id: `B${calls.prepare.length}`, documents: ids.map((id) => doc(id)) }; },
+      authorize: async (documents) => {
+        calls.authorize.push(documents.length);
+        if (failAuthorize > 0) { failAuthorize -= 1; throw new Error("timeout"); }
+        return { results: documents.map((d) => ({ reference: d.reference, status: rejectIds.includes(d.reference) ? "REJECTED" : invalidIds.includes(d.reference) ? "INVALID" : "AUTHORIZED", cStat: "999", reason: "Motivo", errors: ["x"] })) };
+      },
+      saveResults: async (batchId, results) => { calls.save.push(results.length); if (failSave > 0) { failSave -= 1; throw new Error("apps script"); } },
+    },
+  };
+}
+
+test("lote grande é reservado em rodadas e autorizado em blocos pequenos", async () => {
+  const ids = Array.from({ length: 450 }, (_, i) => `N${i}`);
+  const { deps, calls } = fakeDeps();
+  const result = await runAuthorization({ readyIds: ids, deps, wait: noWait });
+  assert.deepEqual(calls.prepare, [ROUND_SIZE, ROUND_SIZE, 50]);
+  assert.ok(calls.authorize.every((size) => size <= AUTHORIZE_SIZE));
+  assert.ok(calls.save.every((size) => size <= SAVE_SIZE));
+  assert.equal(result.authorized, 450);
+  assert.equal(result.done, 450);
+});
+
+test("retoma lote interrompido só com documentos pendentes ou com erro", async () => {
+  const { deps, calls } = fakeDeps();
+  const result = await runAuthorization({ readyIds: [], pendingBatches: [{ ID: "OLD", STATUS: "PARTIAL", ENVIRONMENT: "1" }], deps, wait: noWait });
+  assert.deepEqual(calls.authorize, [2]);
+  assert.equal(result.authorized, 2);
+  assert.equal(calls.prepare.length, 0);
+});
+
+test("falha passageira é repetida e não interrompe", async () => {
+  const { deps } = fakeDeps({ failAuthorize: 2, failSave: 2 });
+  const result = await runAuthorization({ readyIds: ["A", "B"], deps, wait: noWait });
+  assert.equal(result.authorized, 2);
+});
+
+test("falha persistente pausa sem perder o que já foi gravado", async () => {
+  const { deps } = fakeDeps({ failAuthorize: 10 });
+  await assert.rejects(runAuthorization({ readyIds: ["A"], deps, wait: noWait }), PauseError);
+});
+
+test("recusa e dado inválido entram na lista de recusadas, sem reenvio", async () => {
+  const { deps } = fakeDeps({ rejectIds: ["A"], invalidIds: ["B"] });
+  const result = await runAuthorization({ readyIds: ["A", "B", "C"], deps, wait: noWait });
+  assert.equal(result.authorized, 1);
+  assert.equal(result.rejected, 2);
+  assert.equal(result.errors, 0);
+  assert.match(result.rejections[1].reason, /Dados inválidos/);
+});
+
+test("resumo conta prontas, serviços e valor declarado", () => {
+  const rows = [
+    { status: "READY", service: "MDPB LOCAL", document: { items: [{ quantity: 1, unitValue: 10 }] } },
+    { status: "READY", service: "MDPB NACIONAL", document: { items: [{ quantity: 2, unitValue: 5.5 }] } },
+    { status: "AUTHORIZED", service: "MDPB LOCAL", document: { items: [] } },
+    { status: "INVALID", service: "MDPB LOCAL", document: { items: [] } },
+  ];
+  const summary = summarizeReady(rows);
+  assert.equal(summary.total, 2);
+  assert.equal(summary.totalValue, 21);
+  assert.deepEqual(summary.byService, { "MDPB LOCAL": 1, "MDPB NACIONAL": 1 });
+  assert.equal(summary.authorized, 1);
+  assert.equal(summary.pendingFix, 1);
+});
+
+test("lotes pendentes de outro ambiente não são retomados", () => {
+  const batches = [{ ID: "1", STATUS: "PARTIAL", ENVIRONMENT: "2" }, { ID: "2", STATUS: "PREPARED", ENVIRONMENT: "1" }, { ID: "3", STATUS: "FINISHED", ENVIRONMENT: "1" }];
+  assert.deepEqual(pendingBatchesFor(batches, "1").map((b) => b.ID), ["2"]);
+});
+
+test("estimativa usa o ritmo medido", () => {
+  assert.equal(estimateSeconds(100, 10_000, 10), 100);
+  assert.equal(estimateSeconds(10, 0, 0, 1000), 10);
+  assert.deepEqual(chunk([1, 2, 3], 2), [[1, 2], [3]]);
+});
+
+const mapping = { service: "SERVICO", recipientName: "NOME", recipientDocument: "CPF", street: "ENDERECO", number: "NUMERO", district: "BAIRRO", city: "CIDADE", uf: "UF", zip: "CEP", cityCode: "IBGE", reference: "IDENTIFICADOR", description: "CONTEUDO", quantity: "QTD", unitValue: "VALOR" };
+const base = { SERVICO: "MDPB LOCAL", NOME: "FULANO", ENDERECO: "RUA A", NUMERO: "1", BAIRRO: "CENTRO", CIDADE: "FORTALEZA", UF: "CE", CEP: "60010250", IBGE: "2304400", IDENTIFICADOR: "AABNB-L0001", CONTEUDO: "BRINDE DE NATAL", QTD: "1", VALOR: "10" };
+
+test("sem CPF a remessa fica pronta com idOutros padrão", () => {
+  const [row] = mapRows([{ ...base, CPF: "" }], mapping);
+  assert.equal(row.document.recipient.documentType, "idOutros");
+  assert.equal(row.document.recipient.document, RECIPIENT_ID_PLACEHOLDER);
+  assert.deepEqual(validateRemittance(row), []);
+});
+
+test("CPF informado continua validado pelo dígito", () => {
+  const [ok] = mapRows([{ ...base, CPF: "529.982.247-25" }], mapping);
+  assert.equal(ok.document.recipient.documentType, "CPF");
+  assert.deepEqual(validateRemittance(ok), []);
+  const [bad] = mapRows([{ ...base, CPF: "111.111.111-11" }], mapping);
+  assert.ok(validateRemittance(bad).includes("documento"));
+});
+
+test("idOutros segue os caracteres aceitos pela SEFAZ (regra E03a-60)", () => {
+  const [bad] = mapRows([{ ...base, CPF: "RG_123", TIPO: "idOutros" }], { ...mapping, recipientDocumentType: "TIPO" });
+  assert.ok(validateRemittance(bad).includes("documento"));
+});
+
+test("backend gera dest com idOutros quando o documento vem vazio", () => {
+  const source = {
+    service: "MDPB LOCAL", identification: { series: 1, number: 1, environment: "1" },
+    issuer: { cnpj: "07260680000121", name: "AABNB", address: { street: "RUA A", number: "1", district: "CENTRO", city: "FORTALEZA", cityCode: "2304400", uf: "CE", zip: "60000000" } },
+    recipient: { documentType: "CPF", document: "", name: "FULANO", address: { street: "RUA B", number: "2", district: "CENTRO", city: "FORTALEZA", cityCode: "2304400", uf: "CE", zip: "60010250" } },
+    items: [{ description: "BRINDE DE NATAL", quantity: 1, unitValue: 10 }],
+  };
+  const result = normalizeDceDocument(source);
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.document.recipient.documentType, "idOutros");
+  const built = buildUnsignedDce(result.document, { numericCode: "123456" });
+  assert.match(built.xml, /<dest><idOutros>NAO-INFORMADO<\/idOutros><xNome>FULANO<\/xNome>/);
+});
+
+test("rota /autorizar publicada antes do fallback geral", () => {
+  const toml = fs.readFileSync(new URL("../netlify.toml", import.meta.url), "utf8");
+  assert.ok(toml.indexOf('from = "/autorizar"') < toml.indexOf('from = "/*"'));
+  assert.match(fs.readFileSync(new URL("../vite.config.js", import.meta.url), "utf8"), /autorizar\.html/);
+});

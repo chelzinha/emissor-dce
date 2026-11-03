@@ -1,10 +1,11 @@
 import Papa from "papaparse";
 import { normalizeService } from "./postal-services.js";
+import { RECIPIENT_ID_PLACEHOLDER } from "./validation.js";
 
 export const FIELD_DEFINITIONS = [
   ["trackingCode", "Código SRO (PAC e SEDEX)", false], ["service", "Serviço", true],
   ["recipientName", "Destinatário", true], ["recipientDocumentType", "Tipo do documento", false],
-  ["recipientDocument", "CPF/CNPJ/Outro", true],
+  ["recipientDocument", "CPF/CNPJ/Outro (opcional)", false],
   ["street", "Logradouro", true], ["number", "Número", true], ["complement", "Complemento", false],
   ["district", "Bairro", true], ["city", "Município", true], ["uf", "UF", true],
   ["zip", "CEP", true], ["cityCode", "Código IBGE", false], ["email", "E-mail", false],
@@ -102,8 +103,9 @@ export function mapRows(rows, mapping, defaults = {}) {
   const get = (row, field) => mapping[field] ? row[mapping[field]] : defaults[field];
   return rows.map((row, index) => {
     const rawDocument = String(get(row, "recipientDocument") || "").trim();
-    const documentType = inferRecipientDocumentType(rawDocument, get(row, "recipientDocumentType"));
-    const doc = documentType === "idOutros" ? rawDocument : rawDocument.replace(/\D/g, "");
+    // Sem CPF/CNPJ informado: identificação "outros" com valor padrão aceito pela SEFAZ.
+    const documentType = rawDocument ? inferRecipientDocumentType(rawDocument, get(row, "recipientDocumentType")) : "idOutros";
+    const doc = !rawDocument ? RECIPIENT_ID_PLACEHOLDER : documentType === "idOutros" ? rawDocument.toUpperCase() : rawDocument.replace(/\D/g, "");
     const quantity = numeric(get(row, "quantity")) || numeric(defaults.quantity) || 1;
     const unitValue = numeric(get(row, "unitValue")) || numeric(defaults.unitValue);
     const description = String(get(row, "description") || defaults.description || "").trim();

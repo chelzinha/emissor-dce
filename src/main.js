@@ -2,7 +2,7 @@ import "./styles.css";
 import { acceptInvite, getUser, handleAuthCallback, login, logout, requestPasswordRecovery, signup, updateUser } from "@netlify/identity";
 import { api, dataAction, downloadBlob, fileToBase64, textDownload } from "./api.js";
 import { detectMapping, FIELD_DEFINITIONS, inferRecipientDocumentType, mapRows, parseImportFiles } from "./importers.js";
-import { digits, normalizeName, validateRemittance } from "./validation.js";
+import { digits, normalizeName, RECIPIENT_ID_PLACEHOLDER, validateRemittance } from "./validation.js";
 import { remittanceLabel, SERVICE_OPTIONS } from "./postal-services.js";
 
 const app = document.querySelector("#app");
@@ -175,7 +175,9 @@ function setPath(object, path, value) {
   const key = parts.at(-1); target[key] = ["quantity", "unitValue"].includes(key) ? Number(value) : value;
   const item = object.document?.items?.[0]; if (item) item.totalValue = Number((Number(item.quantity) * Number(item.unitValue)).toFixed(2));
   const recipient = object.document?.recipient;
-  if (path === "document.recipient.document" && recipient?.document && recipient.documentType !== "idOutros") {
+  if (path === "document.recipient.document" && recipient && !recipient.document) {
+    recipient.documentType = "idOutros"; recipient.document = RECIPIENT_ID_PLACEHOLDER;
+  } else if (path === "document.recipient.document" && recipient?.document && recipient.documentType !== "idOutros") {
     recipient.documentType = inferRecipientDocumentType(recipient.document);
   }
 }

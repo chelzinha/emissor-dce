@@ -9,6 +9,8 @@ export const DCE_NORMAL_ISSUE = "1";
 // Regra E04-20 do Anexo I: em homologacao o xNome do destinatario deve ser
 // exatamente esta literal, sob pena de rejeicao 598.
 export const HOMOLOGATION_RECIPIENT_NAME = "DCE EMITIDA EM AMBIENTE DE HOMOLOGACAO";
+// Identificação "outros" do destinatário quando o CPF/CNPJ não é informado.
+export const RECIPIENT_ID_PLACEHOLDER = "NAO-INFORMADO";
 
 export const UF_CODES = Object.freeze({
   AC: "12", AL: "27", AP: "16", AM: "13", BA: "29", CE: "23", DF: "53",

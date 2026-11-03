@@ -17,6 +17,10 @@
   to = "/portal.html"
   status = 200
 [[redirects]]
+  from = "/autorizar"
+  to = "/autorizar.html"
+  status = 200
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200

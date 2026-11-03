@@ -26,8 +26,13 @@ export function isCpf(value) {
   return calc(9) === Number(cpf[9]) && calc(10) === Number(cpf[10]);
 }
 
+// Destinatário sem CPF/CNPJ usa idOutros (leiaute DC-e, campo E03a).
+// O CPF não é obrigatório, mas o grupo do destinatário exige uma das três identificações.
+export const RECIPIENT_ID_PLACEHOLDER = "NAO-INFORMADO";
+
+// Regra E03a-60 da SEFAZ: somente algarismos, letras e os caracteres :.+-/()
 export function isIdOutros(value) {
-  return /^[\u0021-\u00FF]{2,60}$/.test(String(value || "").trim());
+  return /^[A-Za-z0-9:.+\-/()]{2,60}$/.test(String(value || "").trim());
 }
 
 export function validateRemittance(row) {

@@ -1,7 +1,7 @@
 import bwipjs from "bwip-js";
 import { PDFDocument, StandardFonts, degrees, rgb } from "pdf-lib";
 import QRCode from "qrcode";
-import { LEGAL_NOTICE_1, LEGAL_NOTICE_2 } from "./constants.mjs";
+import { LEGAL_NOTICE_1, LEGAL_NOTICE_2, RECIPIENT_ID_PLACEHOLDER } from "./constants.mjs";
 
 const A4 = [595.28, 841.89];
 const INK = rgb(0.05, 0.12, 0.2);
@@ -94,13 +94,14 @@ async function renderPage(pdf, fonts, entry, items, pageNumber, pageCount, conti
   const party = (title, person, documentLabel) => {
     box(page, left, y, contentWidth, 64);
     text(page, title, left + 8, y - 10, { font: bold, size: 7, color: MUTED });
-    text(page, `${documentLabel}: ${person.cnpj || person.document || ""}`, left + 8, y - 27, { font: bold, size: 8 });
+    const documentValue = person.cnpj || (person.document === RECIPIENT_ID_PLACEHOLDER ? "NÃO INFORMADO" : person.document) || "";
+    text(page, `${documentLabel}: ${documentValue}`, left + 8, y - 27, { font: bold, size: 8 });
     text(page, person.name, left + 210, y - 27, { font: bold, size: 8, maxWidth: 305 });
     text(page, address(person.address), left + 8, y - 43, { font: regular, size: 7.2, maxWidth: contentWidth - 16 });
     y -= 72;
   };
   party("IDENTIFICAÇÃO DO REMETENTE (USUÁRIO EMITENTE)", document.issuer, "CNPJ");
-  party("IDENTIFICAÇÃO DO DESTINATÁRIO", document.recipient, document.recipient.documentType || "CPF/CNPJ");
+  party("IDENTIFICAÇÃO DO DESTINATÁRIO", document.recipient, document.recipient.documentType === "idOutros" ? "DOCUMENTO" : (document.recipient.documentType || "CPF/CNPJ"));
   box(page, left, y, contentWidth, 42, SOFT);
   text(page, "IDENTIFICAÇÃO DA EMPRESA COM EMISSÃO PRÓPRIA", left + 8, y - 10, { font: bold, size: 7, color: MUTED });
   text(page, `CNPJ: ${document.issuer.cnpj}`, left + 8, y - 27, { font: bold, size: 8 });

@@ -4,6 +4,7 @@ import {
   DCE_NORMAL_ISSUE,
   DCE_TRANSPORT_CORREIOS,
   HOMOLOGATION_RECIPIENT_NAME,
+  RECIPIENT_ID_PLACEHOLDER,
   UF_CODES,
 } from "./constants.mjs";
 
@@ -103,10 +104,14 @@ export function normalizeDceDocument(input) {
   const issuerCnpj = digits(source.issuer?.cnpj);
   // E02 CNPJ, E03 CPF e E03a idOutros sao choice: exatamente um deve existir.
   const rawDocumentType = String(source.recipient?.documentType || "").trim();
-  const recipientDocumentType = rawDocumentType === "CNPJ" ? "CNPJ"
+  const rawRecipientDocument = String(source.recipient?.document ?? "").trim();
+  // Sem documento: idOutros com valor padrão (E03a). O grupo E exige uma identificação.
+  const recipientDocumentType = !rawRecipientDocument ? "idOutros"
+    : rawDocumentType === "CNPJ" ? "CNPJ"
     : rawDocumentType === "idOutros" ? "idOutros"
     : "CPF";
-  const recipientDocument = recipientDocumentType === "idOutros"
+  const recipientDocument = !rawRecipientDocument ? RECIPIENT_ID_PLACEHOLDER
+    : recipientDocumentType === "idOutros"
     ? cleanText(source.recipient?.document, 60).toUpperCase()
     : digits(source.recipient?.document);
   const uf = cleanText(source.issuer?.address?.uf, 2).toUpperCase();
@@ -130,8 +135,9 @@ export function normalizeDceDocument(input) {
   if (recipientDocumentType === "idOutros") {
     // E03a-60: o schema aceita apenas o conjunto [!-y] de 2 a 60 caracteres.
     // Espaco esta fora do conjunto, por isso "RG 123" precisa virar "RG123".
-    if (!/^[\u0021-\u00FF]{2,60}$/.test(recipientDocument)) {
-      errors.push("recipient.document: idOutros aceita de 2 a 60 caracteres, sem espaços");
+    // E03a-60: somente algarismos, letras e os caracteres :.+-/() (rejeição 372).
+    if (!/^[A-Za-z0-9:.+\-/()]{2,60}$/.test(recipientDocument)) {
+      errors.push("recipient.document: idOutros aceita de 2 a 60 caracteres: letras, números e :.+-/()");
     }
   }
   if (!UF_CODES[uf]) errors.push("issuer.address.uf: UF do emitente inválida");

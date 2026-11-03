@@ -29,12 +29,15 @@ function isValidCpf_(value) {
   return digit(9) === Number(cpf.charAt(9)) && digit(10) === Number(cpf.charAt(10));
 }
 
+// Regra E03a-60: somente algarismos, letras e os caracteres :.+-/()
 function isValidIdOutros_(value) {
-  return /^[\u0021-\u00FF]{2,60}$/.test(String(value || '').trim());
+  return /^[A-Za-z0-9:.+\-\/()]{2,60}$/.test(String(value || '').trim());
 }
 
 function normalizeRecipientDocument_(value, explicitType) {
   const raw = String(value || '').trim();
+  // CPF não é obrigatório: sem documento, o destinatário vai como idOutros com valor padrão.
+  if (!raw) return { documentType: 'idOutros', document: 'NAO-INFORMADO', valid: true };
   const requested = String(explicitType || '').trim().toUpperCase();
   let documentType = requested === 'CNPJ' ? 'CNPJ' : (requested === 'IDOUTROS' || requested === 'OUTRO' || requested === 'OUTROS' ? 'idOutros' : (requested === 'CPF' ? 'CPF' : ''));
   if (!documentType) documentType = raw && !/^[\d./-]+$/.test(raw) ? 'idOutros' : (digits_(raw).length === 14 ? 'CNPJ' : 'CPF');
