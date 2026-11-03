@@ -1,0 +1,28 @@
+/* Tela Etiquetas MDPB */
+.lb-batches { display: grid; gap: 8px; }
+.lb-batch { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
+.lb-batch.is-on { border-color: var(--blue); background: var(--soft); }
+.lb-batch input { width: 18px; height: 18px; accent-color: var(--blue); }
+.lb-batch span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.lb-batch small { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lb-batch strong { color: var(--navy); font-size: 13px; white-space: nowrap; }
+.lb-config, .lb-result { margin-top: 20px; }
+.lb-config .form-actions { display: flex; justify-content: flex-end; margin-top: 20px; }
+.lb-groups { display: grid; gap: 14px; }
+.lb-group { padding: 16px; border: 1px solid var(--line); border-radius: 12px; }
+.lb-group-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.lb-group-head h3 { margin: 2px 0 0; color: var(--navy); font: 800 20px Manrope, sans-serif; }
+.lb-group-head strong { color: var(--navy); }
+.lb-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.lb-actions button { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 48px; }
+.lb-actions button small { font-size: 11px; font-weight: 600; opacity: .8; }
+.lb-note { margin: 0 0 14px; color: var(--muted); font-size: 12px; }
+.lb-warn { margin: 10px 0 0; padding: 9px 12px; border-radius: 9px; background: #fff9e8; color: #7a5a00; font-size: 12px; }
+.lb-warn.strong { margin: 0 0 14px; background: #fdecec; color: var(--red); font-weight: 700; }
+.lb-print { display: flex; flex-direction: column; gap: 4px; margin-top: 16px; padding: 12px 14px; border-radius: 10px; background: var(--soft); font-size: 12px; color: #4b5b6e; }
+.lb-print b { color: var(--navy); }
+@media (max-width: 720px) {
+  .lb-batch { grid-template-columns: auto 1fr; }
+  .lb-batch .status-chip, .lb-batch strong { grid-column: 2; justify-self: start; }
+  .lb-actions button { flex: 1 1 100%; }
+}

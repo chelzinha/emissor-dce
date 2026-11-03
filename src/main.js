@@ -4,6 +4,7 @@ import { api, dataAction, downloadBlob, fileToBase64, textDownload } from "./api
 import { detectMapping, FIELD_DEFINITIONS, inferRecipientDocumentType, mapRows, parseImportFiles } from "./importers.js";
 import { digits, normalizeName, RECIPIENT_ID_PLACEHOLDER, validateRemittance } from "./validation.js";
 import { remittanceLabel, SERVICE_OPTIONS } from "./postal-services.js";
+import { createLabelsView } from "./mdpb-labels-ui.js";
 
 const app = document.querySelector("#app");
 const toastElement = document.querySelector("#toast");
@@ -13,6 +14,8 @@ const state = {
   certificateBase64: "", certificateName: "", certificateInfo: null, passphrase: "", environment: "2",
   busy: false, history: [], batches: [],
 };
+
+const labelsView = createLabelsView({ shell: (content) => shell(content), h: (value) => h(value), toast: (m, t) => toast(m, t), setBusy: (v, l) => setBusy(v, l), dataAction, downloadBlob, getState: () => state });
 
 function h(value) {
   return String(value ?? "").replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char]));
@@ -94,7 +97,7 @@ async function handleAuth(event) {
 }
 
 function shell(content) {
-  const nav = [["company", "Empresa"], ["import", "Importar"], ["issue", "Emitir"], ["history", "Documentos"]];
+  const nav = [["company", "Empresa"], ["import", "Importar"], ["issue", "Emitir"], ["history", "Documentos"], ["labels", "Etiquetas"]];
   app.innerHTML = `<div class="app-shell"><aside><div class="logo"><span>DC</span><div>DC-e Fácil<small>Emissão própria</small></div></div><nav>${nav.map(([id, label], index) => `<button data-view="${id}" class="${state.view === id ? "active" : ""}"><b>0${index + 1}</b>${label}</button>`).join("")}</nav><div class="side-note"><strong>PAC, SEDEX e Mala Direta</strong><span>Para PJ não contribuinte do ICMS, quando a operação não exige NF.</span></div></aside><main class="workspace"><header><div><p class="eyebrow">AMBIENTE DO EMITENTE</p><strong>${h(state.user?.email || "Usuário")}</strong></div><button id="sign-out" class="ghost">Sair</button></header><section id="content">${content}</section></main></div>`;
   app.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => switchView(button.dataset.view)));
   app.querySelector("#sign-out").addEventListener("click", async () => { await logout(); state.user = null; renderAuth(); });
@@ -106,6 +109,7 @@ async function switchView(view) {
   if (view === "import") renderImport();
   if (view === "issue") await renderIssue(true);
   if (view === "history") await renderHistory(true);
+  if (view === "labels") await labelsView.open();
 }
 
 function renderCompany() {
