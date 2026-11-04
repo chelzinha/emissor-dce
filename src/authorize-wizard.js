@@ -60,12 +60,12 @@ const icon = {
 };
 
 // ---------- layout ----------
-function frame(content, { stepper = true } = {}) {
+function frame(content, { stepper = true, wide = false } = {}) {
   const index = STEPS.findIndex(([id]) => id === S.step);
   const banner = CFG.environment === "2" ? '<div class="wz-env">Ambiente de TESTE (homologação): as declarações não têm valor fiscal.</div>' : "";
   root.innerHTML = `${banner}<header class="wz-top"><div class="wz-brand"><small>${h(CFG.agfName)}</small><b>Autorização de DC-e</b></div><div class="wz-top-right">${S.company ? `<span class="wz-top-company" title="${h(S.company.name || S.company.profile?.name || "")}">${h(S.company.name || S.company.profile?.name || "")}</span>` : ""}${S.user ? '<button class="wz-link" id="wz-logout">Sair</button>' : ""}</div></header>
   ${stepper ? `<nav class="wz-steps" aria-label="Etapas">${STEPS.map(([id, label], i) => `<div class="wz-step ${i < index ? "done" : ""} ${i === index ? "current" : ""}" ${i === index ? 'aria-current="step"' : ""}><span>${i < index ? icon.check : i + 1}</span><small>${label}</small></div>`).join("")}</nav>` : ""}
-  <main class="wz-main">${content}</main>
+  <main class="wz-main${wide ? " wz-main-wide" : ""}">${content}</main>
   <footer class="wz-foot">Dúvidas? <a href="${whatsLink("Olá! Estou na autorização das DC-e e preciso de ajuda.")}" target="_blank" rel="noopener">Fale com a ${h(CFG.agfName)} pelo WhatsApp</a></footer>`;
   root.querySelector("#wz-logout")?.addEventListener("click", async () => { if (S.running) return; await logout(); location.reload(); });
 }
@@ -78,25 +78,51 @@ function render() {
 }
 
 // ---------- 0. login ----------
+function authMessage(error) {
+  const text = String(error?.message || "");
+  if (/no user found|invalid password|invalid_grant|invalid login/i.test(text)) return "E-mail ou senha incorretos.";
+  if (/not confirmed/i.test(text)) return "Confirme o e-mail antes de entrar: abra o link que chegou na sua caixa de entrada.";
+  return text || "Não foi possível entrar. Tente de novo.";
+}
+
 function renderLogin(message = "") {
-  frame(`<section class="wz-card wz-narrow">
-    <p class="wz-eyebrow">Autorização de DC-e</p>
-    <h1>Entre para autorizar as declarações</h1>
-    <p class="wz-lead">Use o e-mail e a senha que a ${h(CFG.agfName)} enviou para você.</p>
-    ${message ? `<div class="wz-note ok">${h(message)}</div>` : ""}
-    <form id="wz-login" class="wz-form">
-      <label>E-mail<input name="email" type="email" autocomplete="username" required></label>
-      <label>Senha<input name="password" type="password" autocomplete="current-password" required></label>
-      <button class="wz-primary" type="submit">Entrar</button>
-    </form>
-    <button class="wz-link" id="wz-forgot">Esqueci minha senha</button>
-  </section>`, { stepper: false });
+  frame(`<section class="wz-login">
+    <aside class="wz-login-hero">
+      <p class="wz-hero-kicker">${h(CFG.agfName)}</p>
+      <h1>Assine as declarações da sua empresa em poucos minutos.</h1>
+      <p class="wz-hero-lead">A ${h(CFG.agfName)} prepara as declarações de conteúdo eletrônicas (DC-e). Você só confere e assina com o e-CNPJ.</p>
+      <ul class="wz-hero-list">
+        <li><span class="c1">${icon.file}</span>Declarações já preparadas pela AGF</li>
+        <li><span class="c2">${icon.key}</span>Assinatura com o certificado e-CNPJ A1</li>
+        <li><span class="c3">${icon.shield}</span>Certificado usado só nesta página, sem ser salvo</li>
+      </ul>
+    </aside>
+    <div class="wz-login-side">
+      <div class="wz-card wz-login-card">
+        <p class="wz-eyebrow">Acesso seguro</p>
+        <h2 class="wz-login-title">Entrar</h2>
+        <p class="wz-lead">Use o e-mail e a senha que a ${h(CFG.agfName)} enviou para você.</p>
+        ${message ? `<div class="wz-note ok">${h(message)}</div>` : ""}
+        <form id="wz-login" class="wz-form">
+          <label>E-mail<input name="email" type="email" autocomplete="username" inputmode="email" required></label>
+          <label>Senha<div class="wz-pass"><input name="password" type="password" autocomplete="current-password" required><button type="button" class="wz-link" id="wz-show">Mostrar</button></div></label>
+          <button class="wz-primary wz-block" type="submit">Entrar</button>
+        </form>
+        <div class="wz-login-links"><button class="wz-link" id="wz-forgot">Esqueci minha senha</button></div>
+      </div>
+    </div>
+  </section>`, { stepper: false, wide: true });
+  root.querySelector("#wz-show").addEventListener("click", (event) => {
+    const input = root.querySelector("[name=password]");
+    input.type = input.type === "password" ? "text" : "password";
+    event.currentTarget.textContent = input.type === "password" ? "Mostrar" : "Ocultar";
+  });
   root.querySelector("#wz-login").addEventListener("submit", async (event) => {
     event.preventDefault();
     const values = Object.fromEntries(new FormData(event.currentTarget));
     const stop = busy("Entrando...");
     try { S.user = await login(values.email.trim(), values.password); await loadData(); go("inicio"); }
-    catch (error) { toast(error.message || "E-mail ou senha incorretos.", "error"); }
+    catch (error) { toast(authMessage(error), "error"); }
     finally { stop(); }
   });
   root.querySelector("#wz-forgot").addEventListener("click", async () => {

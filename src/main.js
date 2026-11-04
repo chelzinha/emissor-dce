@@ -92,8 +92,17 @@ async function handleAuth(event) {
       state.user = user;
     } else state.user = await login(values.email, values.password);
     await startApp();
-  } catch (error) { toast(error.message, "error"); }
+  } catch (error) { toast(authErrorMessage(error), "error"); }
   finally { setBusy(false); }
+}
+
+function authErrorMessage(error) {
+  const text = String(error?.message || "");
+  if (/signups not allowed/i.test(text)) return "O cadastro é feito só por convite. A conta precisa ser convidada pelo painel da Netlify (Identity > Invite users).";
+  if (/no user found|invalid password|invalid_grant|invalid login/i.test(text)) return "E-mail ou senha incorretos.";
+  if (/not confirmed/i.test(text)) return "Confirme o e-mail antes de entrar.";
+  if (/already registered|already exists/i.test(text)) return "Este e-mail já tem conta. Use Entrar ou Esqueci minha senha.";
+  return text || "Não foi possível concluir. Tente de novo.";
 }
 
 function shell(content) {
