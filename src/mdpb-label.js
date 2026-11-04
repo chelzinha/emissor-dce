@@ -24,6 +24,14 @@ const SOFT = rgb(0.953, 0.965, 0.98);
 
 export const MDPB_AMBITOS = ["LOCAL", "ESTADUAL", "NACIONAL"];
 export const LABELS_PER_FILE = 500;
+export const LABEL_FORMATS = { A4: "A4_6", THERMAL: "10x15" };
+// A4 com 6 etiquetas (2 x 3, células de 105 x 99 mm). 600 por arquivo = 100 folhas.
+export const A4_PER_SHEET = 6;
+export const A4_PER_FILE = 600;
+// Área útil dentro da célula: 5 mm nas laterais e 9 mm em cima e embaixo.
+// Cabe na margem física de impressoras laser e dentro de folhas de 6 etiquetas
+// 99,1 x 93,1 mm (padrão Avery L7166) e de folhas lisas para recorte.
+export const A4_CELL = { width: 105, height: 99, insetX: 5, insetY: 9 };
 export const QR_BASE_URL = "https://www.fazenda.pr.gov.br/dce/qrcode";
 export const PLACEHOLDER_DOCUMENT = "NAO-INFORMADO";
 
@@ -274,6 +282,30 @@ function drawQr(page, text, x, y, size) {
 
 // ===================== Etiqueta 10 x 15 =====================
 
+/** Campos da DACE resumida, na ordem do modelo oficial. null = respiro entre blocos. */
+export function daceRows(entry) {
+  const issuer = entry.issuer || {};
+  const issuerAddress = issuer.address || {};
+  const dest = entry.recipient || {};
+  const destAddress = dest.address || {};
+  return [
+    `Nº ${formatDceNumber(entry.number)}   SÉRIE ${String(entry.series).padStart(3, "0")}`,
+    `DATA DE EMISSÃO: ${formatEmissionDate(entry.authorizedAt)}`,
+    `PROTOCOLO DE AUTORIZAÇÃO: ${entry.protocol}`,
+    "MODALIDADE DO TRANSPORTE: 0 - CORREIOS",
+    null,
+    `CNPJ REMETENTE (USUÁRIO EMITENTE): ${formatCnpj(issuer.cnpj)}`,
+    `NOME REMETENTE: ${upper(issuer.name)}`,
+    `CIDADE-UF REMETENTE: ${upper(issuerAddress.city)}-${upper(issuerAddress.uf)}`,
+    `ENDEREÇO REMETENTE: ${streetLine(issuerAddress, true)}`,
+    null,
+    `CPF/CNPJ DESTINATÁRIO: ${formatRecipientDocument(dest)}`,
+    `NOME DESTINATÁRIO: ${upper(dest.name)}`,
+    `CIDADE-UF DESTINATÁRIO: ${upper(destAddress.city)}-${upper(destAddress.uf)}`,
+    `ENDEREÇO DESTINATÁRIO: ${streetLine(destAddress, true)}`,
+  ];
+}
+
 function drawLabel(page, fonts, logo, entry, config, report) {
   const W = mm(100);
   const H = mm(150);
@@ -330,22 +362,7 @@ function drawLabel(page, fonts, logo, entry, config, report) {
   // DACE resumida
   page.drawRectangle({ x: mm(3), y: sep - mm(5.2), width: W - mm(6), height: mm(4.2), color: GREY_BAND });
   write("DACE RESUMIDA - DECLARAÇÃO AUXILIAR DE CONTEÚDO ELETRÔNICA", W / 2, sep - mm(4), { font: bold, size: 6.6, align: "center" });
-  const rows = [
-    `Nº ${formatDceNumber(entry.number)}   SÉRIE ${String(entry.series).padStart(3, "0")}`,
-    `DATA DE EMISSÃO: ${formatEmissionDate(entry.authorizedAt)}`,
-    `PROTOCOLO DE AUTORIZAÇÃO: ${entry.protocol}`,
-    "MODALIDADE DO TRANSPORTE: 0 - CORREIOS",
-    null,
-    `CNPJ REMETENTE (USUÁRIO EMITENTE): ${formatCnpj(issuer.cnpj)}`,
-    `NOME REMETENTE: ${upper(issuer.name)}`,
-    `CIDADE-UF REMETENTE: ${upper(issuerAddress.city)}-${upper(issuerAddress.uf)}`,
-    `ENDEREÇO REMETENTE: ${streetLine(issuerAddress, true)}`,
-    null,
-    `CPF/CNPJ DESTINATÁRIO: ${formatRecipientDocument(dest)}`,
-    `NOME DESTINATÁRIO: ${upper(dest.name)}`,
-    `CIDADE-UF DESTINATÁRIO: ${upper(destAddress.city)}-${upper(destAddress.uf)}`,
-    `ENDEREÇO DESTINATÁRIO: ${streetLine(destAddress, true)}`,
-  ];
+  const rows = daceRows(entry);
   let y = sep - mm(8);
   rows.forEach((row) => {
     if (row === null) { y -= mm(1.2); return; }
@@ -379,6 +396,124 @@ export async function createLabelsPdf(entries, config, logoPngBytes) {
   return { bytes, report };
 }
 
+
+// ===================== A4 com 6 etiquetas (máquina de franquear) =====================
+
+function wrapText(font, text, size, maxWidth) {
+  const lines = [];
+  let line = "";
+  text.split(/\s+/).forEach((word) => {
+    const test = line ? `${line} ${word}` : word;
+    if (line && font.widthOfTextAtSize(test, size) > maxWidth) { lines.push(line); line = word; } else line = test;
+  });
+  if (line) lines.push(line);
+  return lines;
+}
+
+const LEGAL_TEXT = LEGAL_LINES.join(" ");
+
+/** Uma etiqueta: destinatário em cima, DACE resumida embaixo. (x0, y0) = canto inferior esquerdo da área útil. */
+function drawA4Label(page, fonts, entry, x0, y0, report) {
+  const cw = mm(A4_CELL.width - 2 * A4_CELL.insetX);
+  const ch = mm(A4_CELL.height - 2 * A4_CELL.insetY);
+  const T = y0 + ch;
+  const R = x0 + cw;
+  const write = makeWriter(page, fonts, report);
+  const { bold, regular, mono } = fonts;
+  const dest = entry.recipient || {};
+  const destAddress = dest.address || {};
+
+  // Faixa superior: rótulo do destinatário, serviço/âmbito e fechamento autorizado
+  page.drawRectangle({ x: x0, y: T - mm(4.4), width: mm(26), height: mm(4.4), color: BLACK });
+  write("DESTINATÁRIO", x0 + mm(2), T - mm(3.2), { font: bold, size: 7.6, color: WHITE });
+  write(`MALA DIRETA POSTAL BÁSICA · ${entry.ambito}`, R, T - mm(1.9), { font: bold, size: 6.4, align: "right", maxWidth: cw - mm(28), minSize: 5 });
+  write("FECHAMENTO AUTORIZADO - PODE SER ABERTO PELOS CORREIOS", R, T - mm(4.1), { font: bold, size: 4.8, align: "right", maxWidth: cw - mm(28), minSize: 4 });
+
+  // Destinatário
+  const box = { top: T - mm(4.4), bottom: T - mm(31) };
+  page.drawRectangle({ x: x0, y: box.bottom, width: cw, height: box.top - box.bottom, borderColor: BLACK, borderWidth: 0.9 });
+  const inner = cw - mm(5);
+  write(upper(dest.name), x0 + mm(2.5), box.top - mm(5.2), { font: bold, size: 10, maxWidth: inner, minSize: 7 });
+  write(streetLine(destAddress), x0 + mm(2.5), box.top - mm(9.4), { size: 9, maxWidth: inner, minSize: 6.6 });
+  write(upper(destAddress.district), x0 + mm(2.5), box.top - mm(13.4), { size: 9, maxWidth: inner, minSize: 6.6 });
+  write(formatCep(destAddress.zip), x0 + mm(2.5), box.top - mm(18.2), { font: bold, size: 10.5 });
+  write(`${upper(destAddress.city)} / ${upper(destAddress.uf)}`, x0 + mm(26), box.top - mm(18.2), { size: 9, maxWidth: cw - mm(28), minSize: 6.6 });
+  drawCepnet(page, x0 + mm(2.5), box.bottom + mm(1.8), destAddress.zip);
+
+  // Linha tracejada + DACE resumida
+  const sep = box.bottom - mm(1.8);
+  page.drawLine({ start: { x: x0, y: sep }, end: { x: R, y: sep }, thickness: 0.5, color: BLACK, dashArray: [3, 2] });
+  const band = sep - mm(1.3);
+  page.drawRectangle({ x: x0, y: band - mm(3.8), width: cw, height: mm(3.8), color: GREY_BAND });
+  write("DACE RESUMIDA - DECLARAÇÃO AUXILIAR DE CONTEÚDO ELETRÔNICA", x0 + cw / 2, band - mm(2.75), { font: bold, size: 6, align: "center", maxWidth: cw - mm(2), minSize: 5 });
+
+  const qs = mm(20);
+  const qTop = band - mm(4.6);
+  drawQr(page, qrCodeUrl(entry.accessKey, entry.environment), R - qs, qTop - qs, qs);
+  const textWidth = cw - qs - mm(1.5);
+  let y = band - mm(6.6);
+  daceRows(entry).forEach((row) => {
+    if (row === null) { y -= mm(0.8); return; }
+    write(row, x0, y, { size: 5.5, maxWidth: textWidth, minSize: 4.3 });
+    y -= mm(2.42);
+  });
+
+  // Avisos legais em largura total + chave de acesso
+  const legalSize = 3.9;
+  const legal = wrapText(regular, fonts.safeRegular(LEGAL_TEXT), legalSize, cw);
+  let ly = y - mm(0.5);
+  legal.forEach((line) => { page.drawText(line, { x: x0, y: ly, size: legalSize, font: regular, color: BLACK }); ly -= mm(1.55); });
+  const keyLabel = "CHAVE DE ACESSO DC-e";
+  const keyText = formatAccessKey(entry.accessKey);
+  let keySize = 6.2;
+  while (keySize > 5 && bold.widthOfTextAtSize(keyLabel, keySize - 0.9) + mm(2) + mono.widthOfTextAtSize(keyText, keySize) > cw) keySize -= 0.1;
+  const labelWidth = bold.widthOfTextAtSize(keyLabel, keySize - 0.9);
+  const keyWidth = mono.widthOfTextAtSize(keyText, keySize);
+  const start = x0 + (cw - labelWidth - mm(2) - keyWidth) / 2;
+  write(keyLabel, start, y0 + mm(0.6), { font: bold, size: keySize - 0.9 });
+  write(keyText, start + labelWidth + mm(2), y0 + mm(0.6), { font: mono, size: keySize });
+
+  if (entry.environment !== "1") {
+    page.drawText("HOMOLOGAÇÃO - SEM VALOR FISCAL", { x: x0 + mm(10), y: y0 + mm(8), size: 13, font: bold, color: rgb(0.9, 0.3, 0.24), opacity: 0.35, rotate: degrees(38) });
+  }
+  return { bottomOfText: ly };
+}
+
+/** Posição da etiqueta i (0 a 5) na folha: 2 colunas x 3 linhas, de cima para baixo. */
+export function a4Slot(index) {
+  const col = index % 2;
+  const row = Math.floor(index / 2);
+  const x = mm(col * A4_CELL.width + A4_CELL.insetX);
+  const y = A4[1] - mm((row + 1) * A4_CELL.height - A4_CELL.insetY);
+  return { x, y, col, row };
+}
+
+function drawCutGuides(page) {
+  const guide = { thickness: 0.3, color: rgb(0.78, 0.8, 0.84), dashArray: [2, 3] };
+  page.drawLine({ start: { x: mm(A4_CELL.width), y: mm(4) }, end: { x: mm(A4_CELL.width), y: A4[1] - mm(4) }, ...guide });
+  [1, 2].forEach((row) => page.drawLine({ start: { x: mm(4), y: A4[1] - mm(row * A4_CELL.height) }, end: { x: A4[0] - mm(4), y: A4[1] - mm(row * A4_CELL.height) }, ...guide }));
+}
+
+/** Gera o PDF A4 com 6 etiquetas por folha (destinatário + DACE resumida), sem chancela. */
+export async function createA4LabelsPdf(entries, { cutGuides = true } = {}) {
+  if (!entries?.length) throw new Error("Nenhuma etiqueta para gerar.");
+  const pdf = await PDFDocument.create();
+  pdf.setTitle(`Etiquetas A4 MDPB ${entries[0].ambito}`);
+  pdf.setAuthor("DC-e Fácil - AGF José Bonifácio");
+  const fonts = await embedFonts(pdf);
+  const report = { cut: 0, overflow: 0 };
+  let page = null;
+  entries.forEach((entry, index) => {
+    const slot = index % A4_PER_SHEET;
+    if (slot === 0) { page = pdf.addPage(A4); if (cutGuides) drawCutGuides(page); }
+    const { x, y } = a4Slot(slot);
+    const { bottomOfText } = drawA4Label(page, fonts, entry, x, y, report);
+    if (bottomOfText < y + mm(2.2)) report.overflow += 1;
+  });
+  const bytes = await pdf.save({ useObjectStreams: true });
+  return { bytes, report, sheets: Math.ceil(entries.length / A4_PER_SHEET) };
+}
+
 // ===================== Lista de postagem (A4) =====================
 
 /** Linhas por folha; a última folha sempre guarda espaço para total e assinaturas. */
@@ -397,8 +532,9 @@ export function postingListPlan(total, firstRows, nextRows, closingRows) {
 
 /** Lista de postagem por âmbito, na mesma ordem das etiquetas (CEP crescente). */
 export async function createPostingListPdf(entries, config, { generatedAt = new Date() } = {}) {
-  const errors = validateChancelaConfig(config);
-  if (errors.length) throw new Error(errors.join(" "));
+  const weightOk = Number(config?.weightGrams) > 0 && Number(config?.weightGrams) <= 500;
+  if (!weightOk) throw new Error("Peso unitário deve estar entre 1 e 500 g.");
+  const franking = config.format === LABEL_FORMATS.A4;
   if (!entries?.length) throw new Error("Nenhum objeto para listar.");
   const pdf = await PDFDocument.create();
   const fonts = await embedFonts(pdf);
@@ -427,8 +563,8 @@ export async function createPostingListPdf(entries, config, { generatedAt = new 
     if (pageIndex === 0) {
       const info = [
         ["Cliente", `${upper(issuer.name)}  ·  CNPJ ${formatCnpj(issuer.cnpj)}`],
-        ["Contrato", `${digitsOnly(config.contract)}/${config.contractYear}  ·  DR/${upper(config.dr)}${config.postingCard ? `  ·  Cartão de postagem ${digitsOnly(config.postingCard)}` : ""}`],
-        ["Serviço", `Mala Direta Postal Básica com chancela  ·  âmbito ${ambito}`],
+        ...(digitsOnly(config.contract) ? [["Contrato", `${digitsOnly(config.contract)}/${config.contractYear}  ·  DR/${upper(config.dr)}${config.postingCard ? `  ·  Cartão de postagem ${digitsOnly(config.postingCard)}` : ""}`]] : []),
+        ["Serviço", `Mala Direta Postal Básica ${franking ? "com franqueamento por máquina de franquear" : "com chancela"}  ·  âmbito ${ambito}`],
         ["Quantidade", `${entries.length.toLocaleString("pt-BR")} objetos  ·  ${weight} g cada  ·  peso total ${totalKg} kg`],
         ["Data", date],
       ];

@@ -26,3 +26,11 @@
   .lb-batch .status-chip, .lb-batch strong { grid-column: 2; justify-self: start; }
   .lb-actions button { flex: 1 1 100%; }
 }
+.lb-formats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 18px; }
+.lb-format { display: flex; gap: 12px; align-items: flex-start; padding: 14px; border: 1px solid var(--line); border-radius: 12px; cursor: pointer; }
+.lb-format.is-on { border-color: var(--blue); background: var(--soft); box-shadow: inset 0 0 0 1px var(--blue); }
+.lb-format input { margin-top: 3px; width: 18px; height: 18px; accent-color: var(--blue); }
+.lb-format span { display: flex; flex-direction: column; gap: 3px; }
+.lb-format b { color: var(--navy); }
+.lb-format small { color: var(--muted); font-size: 12px; line-height: 1.4; }
+@media (max-width: 720px) { .lb-formats { grid-template-columns: 1fr; } }

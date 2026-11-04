@@ -6,6 +6,7 @@ import {
   ambitoOf, buildLabelEntries, cepnetBars, cepnetCheckDigit, CEPNET, chancelaContractLine, conferenceCsv, createLabelsPdf,
   createPostingListPdf, defaultChancelaConfig, formatAccessKey, formatDceNumber, formatEmissionDate, formatRecipientDocument,
   groupByAmbito, LABEL_SIZE, postingListPlan, qrCodeUrl, splitParts, validateChancelaConfig,
+  A4_CELL, A4_PER_FILE, a4Slot, createA4LabelsPdf, daceRows,
 } from "../src/mdpb-label.js";
 
 const logo = fs.readFileSync(new URL("../public/correios-traco-positiva.png", import.meta.url));
@@ -117,4 +118,39 @@ test("tela Etiquetas está no menu e a marca dos Correios está publicada", () =
   assert.match(main, /\["labels", "Etiquetas"\]/);
   assert.match(main, /labelsView\.open\(\)/);
   assert.ok(fs.statSync(new URL("../public/correios-traco-positiva.png", import.meta.url)).size > 1000);
+});
+
+test("A4: 6 etiquetas por folha, área útil dentro da célula e da margem de impressão", async () => {
+  const { entries } = buildLabelEntries(fixture());
+  const seven = [...entries, ...entries.slice(0, 3)];
+  const { bytes, sheets, report } = await createA4LabelsPdf(seven);
+  const pdf = await PDFDocument.load(bytes);
+  assert.equal(pdf.getPageCount(), 2);
+  assert.equal(sheets, 2);
+  assert.equal(report.overflow, 0);
+  const { width, height } = pdf.getPage(0).getSize();
+  assert.ok(Math.abs(width - 595.28) < 0.1 && Math.abs(height - 841.89) < 0.1);
+  const mmPt = 72 / 25.4;
+  const slots = [0, 1, 2, 3, 4, 5].map(a4Slot);
+  assert.deepEqual(slots.map((s) => [s.col, s.row]), [[0, 0], [1, 0], [0, 1], [1, 1], [0, 2], [1, 2]]);
+  slots.forEach(({ x, y, col, row }) => {
+    assert.ok(x >= (col * A4_CELL.width + 4.5) * mmPt);
+    assert.ok(x + (A4_CELL.width - 2 * A4_CELL.insetX) * mmPt <= ((col + 1) * A4_CELL.width - 4.5) * mmPt + 0.01);
+    assert.ok(y >= 4 * mmPt && y + (A4_CELL.height - 2 * A4_CELL.insetY) * mmPt <= 841.89 - 4 * mmPt);
+  });
+  assert.equal(A4_PER_FILE % 6, 0);
+});
+
+test("A4 e 10x15 usam os mesmos campos da DACE resumida", () => {
+  const { entries } = buildLabelEntries(fixture());
+  const rows = daceRows(entries[0]).filter(Boolean);
+  assert.equal(rows.length, 12);
+  assert.match(rows[9], /NOME DESTINATÁRIO/);
+});
+
+test("lista de postagem do formato A4 não exige contrato", async () => {
+  const { entries } = buildLabelEntries(fixture());
+  const bytes = await createPostingListPdf(entries.filter((e) => e.ambito === "LOCAL"), { format: "A4_6", weightGrams: "100" });
+  assert.equal((await PDFDocument.load(bytes)).getPageCount(), 1);
+  await assert.rejects(createPostingListPdf(entries, { format: "A4_6", weightGrams: "0" }), /Peso/);
 });
