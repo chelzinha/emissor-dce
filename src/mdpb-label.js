@@ -423,11 +423,9 @@ function drawA4Label(page, fonts, entry, x0, y0, report) {
   const dest = entry.recipient || {};
   const destAddress = dest.address || {};
 
-  // Faixa superior: rótulo do destinatário, serviço/âmbito e fechamento autorizado
+  // Rótulo do destinatário. Serviço e "fechamento autorizado" saem na impressão da máquina de franquear.
   page.drawRectangle({ x: x0, y: T - mm(4.4), width: mm(26), height: mm(4.4), color: BLACK });
   write("DESTINATÁRIO", x0 + mm(2), T - mm(3.2), { font: bold, size: 7.6, color: WHITE });
-  write(`MALA DIRETA POSTAL BÁSICA · ${entry.ambito}`, R, T - mm(1.9), { font: bold, size: 6.4, align: "right", maxWidth: cw - mm(28), minSize: 5 });
-  write("FECHAMENTO AUTORIZADO - PODE SER ABERTO PELOS CORREIOS", R, T - mm(4.1), { font: bold, size: 4.8, align: "right", maxWidth: cw - mm(28), minSize: 4 });
 
   // Destinatário
   const box = { top: T - mm(4.4), bottom: T - mm(31) };
