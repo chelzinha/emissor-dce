@@ -63,7 +63,7 @@ const icon = {
 function frame(content, { stepper = true } = {}) {
   const index = STEPS.findIndex(([id]) => id === S.step);
   const banner = CFG.environment === "2" ? '<div class="wz-env">Ambiente de TESTE (homologação): as declarações não têm valor fiscal.</div>' : "";
-  root.innerHTML = `${banner}<header class="wz-top"><div class="wz-brand"><img src="/agf-selo-192.png" alt="" width="40" height="40"><div><b>${h(CFG.agfName)}</b><small>Autorização de DC-e</small></div></div><div class="wz-top-right">${S.company ? `<span>${h(S.company.name || S.company.profile?.name || "")}</span>` : ""}${S.user ? '<button class="wz-link" id="wz-logout">Sair</button>' : ""}</div></header>
+  root.innerHTML = `${banner}<header class="wz-top"><div class="wz-brand"><small>${h(CFG.agfName)}</small><b>Autorização de DC-e</b></div><div class="wz-top-right">${S.company ? `<span class="wz-top-company" title="${h(S.company.name || S.company.profile?.name || "")}">${h(S.company.name || S.company.profile?.name || "")}</span>` : ""}${S.user ? '<button class="wz-link" id="wz-logout">Sair</button>' : ""}</div></header>
   ${stepper ? `<nav class="wz-steps" aria-label="Etapas">${STEPS.map(([id, label], i) => `<div class="wz-step ${i < index ? "done" : ""} ${i === index ? "current" : ""}" ${i === index ? 'aria-current="step"' : ""}><span>${i < index ? icon.check : i + 1}</span><small>${label}</small></div>`).join("")}</nav>` : ""}
   <main class="wz-main">${content}</main>
   <footer class="wz-foot">Dúvidas? <a href="${whatsLink("Olá! Estou na autorização das DC-e e preciso de ajuda.")}" target="_blank" rel="noopener">Fale com a ${h(CFG.agfName)} pelo WhatsApp</a></footer>`;
@@ -128,14 +128,15 @@ function renderStart() {
   }
   frame(`<section class="wz-card">
     <p class="wz-eyebrow">Olá!</p>
-    <h1>As declarações de ${h(name)} estão prontas para autorização</h1>
+    <h1>Declarações prontas para autorização</h1>
+    <div class="wz-company">${icon.file}<div><small>Emitente</small><b>${h(name)}</b>${S.company.cnpj || S.company.profile?.cnpj ? `<span>CNPJ ${h(cnpjMask(S.company.cnpj || S.company.profile?.cnpj))}</span>` : ""}</div></div>
     <p class="wz-lead">A <b>DC-e</b> (Declaração de Conteúdo eletrônica) é o documento fiscal que acompanha cada envio. A ${h(CFG.agfName)} já preparou tudo. Falta somente a <b>assinatura digital com o e-CNPJ</b> da empresa.</p>
     ${S.pending.length ? `<div class="wz-note warn">${icon.alert}<div><b>Existe uma autorização interrompida.</b> Ao continuar, o sistema retoma exatamente de onde parou, sem duplicar nenhuma declaração.</div></div>` : ""}
     <h2>Antes de começar, tenha em mãos</h2>
     <ul class="wz-needs">
       <li>${icon.file}<div><b>O arquivo do certificado e-CNPJ A1</b><span>Termina em <b>.pfx</b> ou <b>.p12</b>. Precisa estar neste computador.</span></div></li>
       <li>${icon.key}<div><b>A senha do certificado</b><span>É a senha criada quando o certificado foi emitido. Não é a senha deste site.</span></div></li>
-      <li>${icon.clock}<div><b>${duration(estimateSeconds(total, 0, 0))} com esta página aberta</b><span>São ${int(total)} declarações. Deixe o computador ligado na tomada.</span></div></li>
+      <li>${icon.clock}<div><b>${(() => { const text = duration(estimateSeconds(total, 0, 0)); return text.charAt(0).toUpperCase() + text.slice(1); })()} com esta página aberta</b><span>São ${int(total)} declarações. Deixe o computador ligado na tomada.</span></div></li>
     </ul>
     <div class="wz-note">${icon.shield}<div>O certificado <b>não é salvo</b>. Ele é usado só durante a autorização e descartado ao fechar a página.</div></div>
     <details class="wz-faq"><summary>Meu certificado é um cartão ou token USB</summary><p>Esse tipo (A3) não funciona neste sistema. É necessário o certificado em arquivo (A1). Fale com a ${h(CFG.agfName)} antes de continuar.</p></details>
