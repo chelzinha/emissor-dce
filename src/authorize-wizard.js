@@ -143,7 +143,8 @@ async function loadData() {
 // ---------- 1. início ----------
 function renderStart() {
   if (!S.company) {
-    frame(`<section class="wz-card"><div class="wz-empty">${icon.alert}<h1>Ainda não está pronto</h1><p>A ${h(CFG.agfName)} ainda está preparando as declarações desta conta. Você receberá um aviso quando estiver tudo pronto.</p></div></section>`);
+    frame(`<section class="wz-card"><div class="wz-empty">${icon.alert}<h1>Ainda não está pronto</h1><p>Esta conta ainda não tem empresa nem declarações cadastradas.</p>${S.user?.email ? `<p class="wz-muted">Conta conectada: <b>${h(S.user.email)}</b></p>` : ""}<p>Confira se entrou com o e-mail que a ${h(CFG.agfName)} enviou. Se estiver certo, avise a ${h(CFG.agfName)}: as declarações ainda estão sendo preparadas.</p><div class="wz-actions center"><button class="wz-ghost" id="wz-switch">Entrar com outro e-mail</button></div></div></section>`);
+    root.querySelector("#wz-switch")?.addEventListener("click", async () => { try { await logout(); } catch {} S.user = null; renderLogin(); });
     return;
   }
   const total = totalToAuthorize();
