@@ -146,3 +146,4 @@ code { color: #34475b; font: 10px ui-monospace, SFMono-Regular, Consolas, monosp
 @media (max-width: 560px) {
   nav button { padding: 10px 5px; font-size: 11px; }.page-head { flex-direction: column; }.form-grid, .mapping-grid, .defaults { grid-template-columns: 1fr; }.wide { grid-column: auto; }.bulk { align-items: stretch; flex-direction: column; }.button-row { flex-wrap: wrap; }.result-row { grid-template-columns: 10px 1fr; }.result-row code, .result-row button { grid-column: 2; }
 }
+.loading-card { display: flex; align-items: center; gap: 12px; color: var(--muted, #5f6b7e); min-height: 120px; justify-content: center; }

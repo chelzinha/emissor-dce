@@ -15,6 +15,17 @@ const state = {
   busy: false, history: [], batches: [],
 };
 
+// Cache curto das leituras do backend: a tela abre na hora com o que já foi lido
+// e só busca de novo depois de FRESH_MS ou quando alguma gravação acontece.
+const FRESH_MS = 60_000;
+const loadedAt = {};
+const isStale = (key) => !loadedAt[key] || Date.now() - loadedAt[key] > FRESH_MS;
+if (typeof window !== "undefined") window.addEventListener("dce-data-changed", () => { Object.keys(loadedAt).forEach((key) => delete loadedAt[key]); });
+
+function loadingTemplate(eyebrow, title) {
+  return `<div class="page-head"><div><p class="eyebrow">${h(eyebrow)}</p><h1>${h(title)}</h1></div><span class="status-chip">Carregando…</span></div><section class="card loading-card"><span class="spinner"></span><span>Buscando os dados mais recentes…</span></section>`;
+}
+
 const labelsView = createLabelsView({ shell: (content) => shell(content), h: (value) => h(value), toast: (m, t) => toast(m, t), setBusy: (v, l) => setBusy(v, l), dataAction, downloadBlob, getState: () => state });
 
 function h(value) {
@@ -251,9 +262,15 @@ async function saveImport() {
 }
 
 async function renderIssue(load = false) {
-  if (load || !state.remittances.some((row) => row.id)) {
-    try { [state.remittances, state.batches] = await Promise.all([dataAction("remittances.list", {}), dataAction("batches.list", {})]); } catch (error) { toast(error.message, "error"); }
+  if ((load && isStale("issue")) || !state.remittances.some((row) => row.id)) {
+    if (loadedAt.issue) drawIssue(); else shell(loadingTemplate("PASSO 3", "Assinar e autorizar"));
+    try { [state.remittances, state.batches] = await Promise.all([dataAction("remittances.list", {}), dataAction("batches.list", {})]); loadedAt.issue = Date.now(); } catch (error) { toast(error.message, "error"); }
+    if (state.view !== "issue") return;
   }
+  drawIssue();
+}
+
+function drawIssue() {
   const ready = state.remittances.filter((row) => row.status === "READY");
   const pendingBatch = state.batches.find((batch) => ["PREPARED", "PROCESSING", "PARTIAL"].includes(String(batch.STATUS)));
   if (!state.selectedIds.size) ready.forEach((row) => state.selectedIds.add(row.id));
@@ -373,10 +390,16 @@ async function downloadDaces() {
 }
 
 async function renderHistory(load = false) {
-  if (load) {
-    try { [state.history, state.batches] = await Promise.all([dataAction("dce.list", {}), dataAction("batches.list", {})]); }
+  if (load && isStale("history")) {
+    if (loadedAt.history) drawHistory(); else shell(loadingTemplate("ARQUIVO FISCAL", "Documentos emitidos"));
+    try { [state.history, state.batches] = await Promise.all([dataAction("dce.list", {}), dataAction("batches.list", {})]); loadedAt.history = Date.now(); }
     catch (error) { toast(error.message, "error"); }
+    if (state.view !== "history") return;
   }
+  drawHistory();
+}
+
+function drawHistory() {
   const rows = state.history.map((row) => {
     const batch = state.batches.find((item) => String(item.ID) === String(row.BATCH_ID));
     const environment = String(batch?.ENVIRONMENT || "2");

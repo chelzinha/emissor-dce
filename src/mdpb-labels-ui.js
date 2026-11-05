@@ -143,9 +143,11 @@ export function createLabelsView({ shell, h, toast, setBusy, dataAction, downloa
     view.selected = new Set(view.batches.filter((batch) => String(batch.ENVIRONMENT) === "1" && authorizedCount(batch.ID) > 0).map((batch) => String(batch.ID)));
   }
 
+  if (typeof window !== "undefined") window.addEventListener("dce-data-changed", () => { view.loadedAt = null; });
+
   async function open(reload = false) {
     await ensureConfig();
-    if (reload || !view.loadedAt) {
+    if (reload || !view.loadedAt || Date.now() - view.loadedAt > 60_000) {
       setBusy(true, "Lendo lotes autorizados…");
       try {
         const [batches, dceRows] = await Promise.all([dataAction("batches.list", {}), dataAction("dce.list", {})]);

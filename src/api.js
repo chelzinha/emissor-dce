@@ -53,9 +53,16 @@ async function processCleaningInSafeChunks(payload, options = {}) {
   return { id: lastId, summary };
 }
 
+const READ_ACTIONS = /\.(list|get|status)$/;
+
 export function dataAction(action, payload = {}, options = {}) {
   if (action === "cleaning.process") return processCleaningInSafeChunks(payload, options);
-  return callDataAction(action, payload);
+  const call = callDataAction(action, payload);
+  // Gravações avisam as telas para descartar o cache de leitura.
+  if (!READ_ACTIONS.test(action) && typeof window !== "undefined") {
+    call.then(() => window.dispatchEvent(new CustomEvent("dce-data-changed", { detail: { action } })), () => {});
+  }
+  return call;
 }
 
 export function downloadBlob(blob, name) {
