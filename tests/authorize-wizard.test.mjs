@@ -135,3 +135,19 @@ test("rota /autorizar publicada antes do fallback geral", () => {
   assert.ok(toml.indexOf('from = "/autorizar"') < toml.indexOf('from = "/*"'));
   assert.match(fs.readFileSync(new URL("../vite.config.js", import.meta.url), "utf8"), /autorizar\.html/);
 });
+
+test("CNPJ salvo como número na planilha (sem zero à esquerda) continua válido", async () => {
+  const { cnpjDigits } = await import("../src/validation.js");
+  assert.equal(cnpjDigits(7260680000121), "07260680000121");
+  assert.equal(cnpjDigits("07.260.680/0001-21"), "07260680000121");
+  assert.equal(cnpjDigits("52998224725"), "52998224725");
+  const source = {
+    service: "MDPB LOCAL", identification: { series: 1, number: 1, environment: "1" },
+    issuer: { cnpj: 7260680000121, name: "AABNB", address: { street: "RUA A", number: "1", district: "CENTRO", city: "FORTALEZA", cityCode: "2304400", uf: "CE", zip: "60000000" } },
+    recipient: { documentType: "idOutros", document: "NAO-INFORMADO", name: "FULANO", address: { street: "RUA B", number: "2", district: "CENTRO", city: "FORTALEZA", cityCode: "2304400", uf: "CE", zip: "60010250" } },
+    items: [{ description: "BRINDE DE NATAL", quantity: 1, unitValue: 10 }],
+  };
+  const result = normalizeDceDocument(source);
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.document.issuer.cnpj, "07260680000121");
+});

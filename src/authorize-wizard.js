@@ -3,7 +3,7 @@
 import "./authorize-wizard.css";
 import { getUser, login, logout, requestPasswordRecovery } from "@netlify/identity";
 import { api, dataAction, fileToBase64 } from "./api.js";
-import { digits } from "./validation.js";
+import { cnpjDigits, digits } from "./validation.js";
 import { estimateSeconds, PauseError, pendingBatchesFor, runAuthorization, summarizeReady } from "./authorize-engine.js";
 
 const CFG = Object.freeze({
@@ -24,7 +24,7 @@ const S = {
 const h = (value) => String(value ?? "").replace(/[&<>'"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[c]));
 const money = (value) => Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const int = (value) => Number(value || 0).toLocaleString("pt-BR");
-const cnpjMask = (value) => digits(value).replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
+const cnpjMask = (value) => cnpjDigits(value).replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
 const dateBr = (value) => (value ? new Date(value).toLocaleDateString("pt-BR") : "");
 const whatsLink = (text) => `https://wa.me/${CFG.agfWhatsApp}?text=${encodeURIComponent(text)}`;
 const totalToAuthorize = () => (S.summary?.total || 0) + S.pending.reduce((sum, batch) => sum + Number(batch.TOTAL || 0) - Number(batch.AUTHORIZED || 0) - Number(batch.REJECTED || 0), 0);
@@ -156,7 +156,7 @@ function renderStart() {
   frame(`<section class="wz-card">
     <p class="wz-eyebrow">Olá!</p>
     <h1>Declarações prontas para autorização</h1>
-    <div class="wz-company">${icon.file}<div><small>Emitente</small><b>${h(name)}</b>${S.company.cnpj || S.company.profile?.cnpj ? `<span>CNPJ ${h(cnpjMask(S.company.cnpj || S.company.profile?.cnpj))}</span>` : ""}</div></div>
+    <div class="wz-company">${icon.file}<div><small>Emitente</small><b>${h(name)}</b>${S.company.profile?.cnpj || S.company.cnpj ? `<span>CNPJ ${h(cnpjMask(S.company.profile?.cnpj || S.company.cnpj))}</span>` : ""}</div></div>
     <p class="wz-lead">A <b>DC-e</b> (Declaração de Conteúdo eletrônica) é o documento fiscal que acompanha cada envio. A ${h(CFG.agfName)} já preparou tudo. Falta somente a <b>assinatura digital com o e-CNPJ</b> da empresa.</p>
     ${S.pending.length ? `<div class="wz-note warn">${icon.alert}<div><b>Existe uma autorização interrompida.</b> Ao continuar, o sistema retoma exatamente de onde parou, sem duplicar nenhuma declaração.</div></div>` : ""}
     <h2>Antes de começar, tenha em mãos</h2>
@@ -185,7 +185,7 @@ function renderReview() {
     <div class="wz-metrics">
       <div><span>Declarações</span><strong>${int(totalToAuthorize())}</strong>${resumeCount > 0 ? `<small>${int(resumeCount)} de autorização interrompida</small>` : ""}</div>
       <div><span>Valor total declarado</span><strong>${money(totalValue)}</strong>${resumeCount > 0 ? "<small>sem contar a autorização interrompida</small>" : ""}</div>
-      <div><span>Emitente</span><strong class="wz-sm">${h(cnpjMask(S.company.cnpj || S.company.profile?.cnpj))}</strong><small>${h(S.company.name || S.company.profile?.name || "")}</small></div>
+      <div><span>Emitente</span><strong class="wz-sm">${h(cnpjMask(S.company.profile?.cnpj || S.company.cnpj))}</strong><small>${h(S.company.name || S.company.profile?.name || "")}</small></div>
     </div>
     <div class="wz-chips">${Object.entries(byService).map(([service, count]) => `<span>${h(service)}: <b>${int(count)}</b></span>`).join("")}</div>
     <label class="wz-search">Procurar um destinatário<input id="search" value="${h(S.search)}" placeholder="Nome ou cidade"></label>
@@ -201,9 +201,9 @@ function renderReview() {
 // ---------- 3. certificado ----------
 function certificateProblem(info) {
   if (!info) return "";
-  const companyCnpj = digits(S.company.cnpj || S.company.profile?.cnpj);
+  const companyCnpj = cnpjDigits(S.company.profile?.cnpj || S.company.cnpj);
   if (!info.cnpj) return "Este certificado não tem CNPJ. Use o e-CNPJ da empresa (não serve e-CPF).";
-  if (digits(info.cnpj).slice(0, 8) !== companyCnpj.slice(0, 8)) return `Este certificado é de outro CNPJ (${cnpjMask(info.cnpj)}). Use o e-CNPJ de ${cnpjMask(companyCnpj)}.`;
+  if (cnpjDigits(info.cnpj).slice(0, 8) !== companyCnpj.slice(0, 8)) return `Este certificado é de outro CNPJ (${cnpjMask(info.cnpj)}). Use o e-CNPJ de ${cnpjMask(companyCnpj)}.`;
   if (info.validTo && new Date(info.validTo) < new Date()) return `Este certificado venceu em ${dateBr(info.validTo)}. É preciso renovar o certificado.`;
   return "";
 }

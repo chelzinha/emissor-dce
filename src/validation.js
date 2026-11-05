@@ -1,6 +1,8 @@
 import { isAllowedService, requiresTrackingCode } from "./postal-services.js";
 
 export function digits(value) { return String(value || "").replace(/\D/g, ""); }
+// A planilha guarda CNPJ como número e perde o zero à esquerda (07.260... vira 7260...).
+export function cnpjDigits(value) { const d = digits(value); return d.length >= 12 && d.length < 14 ? d.padStart(14, "0") : d; }
 
 export function isCnpj(value) {
   const cnpj = digits(value);

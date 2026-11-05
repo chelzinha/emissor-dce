@@ -2,7 +2,7 @@ import "./styles.css";
 import { acceptInvite, getUser, handleAuthCallback, login, logout, requestPasswordRecovery, signup, updateUser } from "@netlify/identity";
 import { api, dataAction, downloadBlob, fileToBase64, textDownload } from "./api.js";
 import { detectMapping, FIELD_DEFINITIONS, inferRecipientDocumentType, mapRows, parseImportFiles } from "./importers.js";
-import { digits, normalizeName, RECIPIENT_ID_PLACEHOLDER, validateRemittance } from "./validation.js";
+import { cnpjDigits, digits, normalizeName, RECIPIENT_ID_PLACEHOLDER, validateRemittance } from "./validation.js";
 import { remittanceLabel, SERVICE_OPTIONS } from "./postal-services.js";
 import { createLabelsView } from "./mdpb-labels-ui.js";
 
@@ -307,7 +307,7 @@ async function resumeBatch(batchId) {
     const pending = stored.documents.filter((document) => ["PREPARED", "ERROR"].includes(document.status));
     if (!pending.length) throw new Error("O lote não possui documentos pendentes para retransmissão.");
     const certificateInfo = await api("/api/dce/certificate", { method: "POST", body: JSON.stringify({ certificateBase64: state.certificateBase64, passphrase: state.passphrase }) });
-    if (!certificateInfo.cnpj || digits(certificateInfo.cnpj).slice(0, 8) !== digits(state.company?.cnpj).slice(0, 8)) throw new Error("O CNPJ-base do certificado não corresponde ao emitente.");
+    if (!certificateInfo.cnpj || cnpjDigits(certificateInfo.cnpj).slice(0, 8) !== cnpjDigits(state.company?.profile?.cnpj || state.company?.cnpj).slice(0, 8)) throw new Error("O CNPJ-base do certificado não corresponde ao emitente.");
     const service = await api("/api/dce/status", { method: "POST", body: JSON.stringify({ certificateBase64: state.certificateBase64, passphrase: state.passphrase, environment: state.environment }) });
     if (service.cStat !== "107") throw new Error(`Autorizador indisponível: ${service.cStat} ${service.reason}`);
     state.results = [];
@@ -347,7 +347,7 @@ async function authorizeBatch() {
     setBusy(true, "Conferindo o e-CNPJ…");
     const certificateInfo = await api("/api/dce/certificate", { method: "POST", body: JSON.stringify({ certificateBase64: state.certificateBase64, passphrase: state.passphrase }) });
     if (!certificateInfo.cnpj) throw new Error("Não foi possível identificar o CNPJ no certificado digital.");
-    if (digits(certificateInfo.cnpj).slice(0, 8) !== digits(state.company?.cnpj).slice(0, 8)) throw new Error("O CNPJ-base do certificado não corresponde ao emitente.");
+    if (cnpjDigits(certificateInfo.cnpj).slice(0, 8) !== cnpjDigits(state.company?.profile?.cnpj || state.company?.cnpj).slice(0, 8)) throw new Error("O CNPJ-base do certificado não corresponde ao emitente.");
     state.certificateInfo = certificateInfo;
     setBusy(true, "Verificando o serviço autorizador…");
     const service = await api("/api/dce/status", { method: "POST", body: JSON.stringify({ certificateBase64: state.certificateBase64, passphrase: state.passphrase, environment: state.environment }) });

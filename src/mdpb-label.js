@@ -60,7 +60,8 @@ export function formatCep(value) {
 }
 
 export function formatCnpj(value) {
-  const d = digitsOnly(value);
+  const raw = digitsOnly(value);
+  const d = raw.length >= 12 && raw.length < 14 ? raw.padStart(14, "0") : raw;
   return d.length === 14 ? `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}` : String(value || "");
 }
 
@@ -166,7 +167,7 @@ export const CHANCELA_PRESETS = {
 };
 
 export function defaultChancelaConfig(issuer = {}) {
-  const preset = CHANCELA_PRESETS[digitsOnly(issuer.cnpj)] || {};
+  const preset = CHANCELA_PRESETS[digitsOnly(issuer.cnpj).padStart(14, "0")] || {};
   return {
     contract: "", contractYear: "", dr: upper(issuer.address?.uf) || "CE", sigla: "", postingCard: "",
     weightGrams: "100", senderName: upper(issuer.name), ...preset,

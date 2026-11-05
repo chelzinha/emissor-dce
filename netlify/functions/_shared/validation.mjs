@@ -101,7 +101,9 @@ function normalizeAddress(errors, path, address, destination = false) {
 export function normalizeDceDocument(input) {
   const errors = [];
   const source = input || {};
-  const issuerCnpj = digits(source.issuer?.cnpj);
+  // CNPJ vindo da planilha como número perde o zero à esquerda.
+  const rawIssuerCnpj = digits(source.issuer?.cnpj);
+  const issuerCnpj = rawIssuerCnpj.length >= 12 && rawIssuerCnpj.length < 14 ? rawIssuerCnpj.padStart(14, "0") : rawIssuerCnpj;
   // E02 CNPJ, E03 CPF e E03a idOutros sao choice: exatamente um deve existir.
   const rawDocumentType = String(source.recipient?.documentType || "").trim();
   const rawRecipientDocument = String(source.recipient?.document ?? "").trim();
