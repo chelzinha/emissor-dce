@@ -1,6 +1,7 @@
 import https from "node:https";
 import { XMLParser } from "fast-xml-parser";
 import { escapeXml } from "./xml.mjs";
+import { SEFAZ_TRUSTED_CAS } from "./icp-brasil-roots.mjs";
 
 export function buildSoapEnvelope(payloadXml, namespace) {
   const xml = String(payloadXml).replace(/^<\?xml[^>]*>\s*/i, "");
@@ -31,6 +32,7 @@ export function postSoap({ url, action, body, certificate, timeoutMs = 50_000 })
       passphrase: certificate.passphrase,
       minVersion: "TLSv1.2",
       rejectUnauthorized: true,
+      ca: SEFAZ_TRUSTED_CAS,
       timeout: timeoutMs,
       headers: {
         "Content-Type": `application/soap+xml; charset=utf-8; action="${action}"`,
