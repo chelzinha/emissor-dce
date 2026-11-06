@@ -308,8 +308,8 @@ async function resumeBatch(batchId) {
     if (!pending.length) throw new Error("O lote não possui documentos pendentes para retransmissão.");
     const certificateInfo = await api("/api/dce/certificate", { method: "POST", body: JSON.stringify({ certificateBase64: state.certificateBase64, passphrase: state.passphrase }) });
     if (!certificateInfo.cnpj || cnpjDigits(certificateInfo.cnpj).slice(0, 8) !== cnpjDigits(state.company?.profile?.cnpj || state.company?.cnpj).slice(0, 8)) throw new Error("O CNPJ-base do certificado não corresponde ao emitente.");
-    const service = await api("/api/dce/status", { method: "POST", body: JSON.stringify({ certificateBase64: state.certificateBase64, passphrase: state.passphrase, environment: state.environment }) });
-    if (service.cStat !== "107") throw new Error(`Autorizador indisponível: ${service.cStat} ${service.reason}`);
+    const service = await api("/api/dce/status", { method: "POST", body: JSON.stringify({ certificateBase64: state.certificateBase64, passphrase: state.passphrase, environment: state.environment, uf: state.company?.profile?.address?.uf || "" }) });
+    if (["108", "109"].includes(String(service.cStat))) throw new Error(`Autorizador fora do ar: ${service.cStat} ${service.reason}`);
     state.results = [];
     for (let index = 0; index < pending.length; index += 5) {
       const documents = pending.slice(index, index + 5);
@@ -350,8 +350,8 @@ async function authorizeBatch() {
     if (cnpjDigits(certificateInfo.cnpj).slice(0, 8) !== cnpjDigits(state.company?.profile?.cnpj || state.company?.cnpj).slice(0, 8)) throw new Error("O CNPJ-base do certificado não corresponde ao emitente.");
     state.certificateInfo = certificateInfo;
     setBusy(true, "Verificando o serviço autorizador…");
-    const service = await api("/api/dce/status", { method: "POST", body: JSON.stringify({ certificateBase64: state.certificateBase64, passphrase: state.passphrase, environment: state.environment }) });
-    if (service.cStat !== "107") throw new Error(`Autorizador indisponível: ${service.cStat} ${service.reason}`);
+    const service = await api("/api/dce/status", { method: "POST", body: JSON.stringify({ certificateBase64: state.certificateBase64, passphrase: state.passphrase, environment: state.environment, uf: state.company?.profile?.address?.uf || "" }) });
+    if (["108", "109"].includes(String(service.cStat))) throw new Error(`Autorizador fora do ar: ${service.cStat} ${service.reason}`);
     state.batch = await dataAction("batch.prepare", { remittanceIds: ids, environment: state.environment });
     state.results = [];
     const size = 5;

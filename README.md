@@ -154,7 +154,7 @@ tests/                      testes da chave, XML, assinatura e PDF
 ## Regras importantes preservadas
 
 - a emissão própria é apenas para usuário emitente CNPJ não contribuinte;
-- `emit.CNPJ` e `EmpEmisProp.CNPJ` são o CNPJ do cliente, não o da agência;
+- `emit.CNPJ` é o CNPJ do cliente, não o da agência (o grupo `EmpEmisProp` foi removido pela NT 2024.001 e não é enviado);
 - o CNPJ-base do certificado deve corresponder ao emitente;
 - o A1 e sua senha nunca são enviados ao Apps Script nem gravados no Sheets, Drive ou browser storage;
 - cada número e código numérico da chave são reservados antes da transmissão e não mudam numa repetição;

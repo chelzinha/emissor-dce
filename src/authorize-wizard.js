@@ -282,8 +282,11 @@ async function startAuthorization() {
   const credentials = { certificateBase64: S.cert.base64, passphrase: S.passphrase };
   const confirmProduction = CFG.environment === "1";
   try {
-    const service = await api("/api/dce/status", { method: "POST", body: JSON.stringify({ ...credentials, environment: CFG.environment }) });
-    if (service.cStat !== "107") throw new PauseError(`A SEFAZ está indisponível agora (${service.cStat} ${service.reason || ""}). Tente de novo em alguns minutos.`);
+    const uf = S.company?.profile?.address?.uf || S.company?.address?.uf || "";
+    const service = await api("/api/dce/status", { method: "POST", body: JSON.stringify({ ...credentials, environment: CFG.environment, uf }) });
+    // Só 108/109 (serviço paralisado) impedem o envio. Outro retorno da consulta de
+    // status não bloqueia: a própria autorização devolve o motivo de cada DC-e.
+    if (["108", "109"].includes(String(service.cStat))) throw new PauseError(`A SEFAZ está fora do ar agora (${service.cStat} ${service.reason || ""}). Tente de novo em alguns minutos.`);
     await loadData();
     const result = await runAuthorization({
       readyIds: S.summary.ready.map((row) => row.id),

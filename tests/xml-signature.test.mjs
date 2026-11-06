@@ -17,7 +17,7 @@ test("normaliza emissão própria para Correios", () => {
 test("gera XML e assinatura envelopada", () => {
   const normalized = normalizeDceDocument(sampleInput).document;
   const built = buildUnsignedDce(normalized, { numericCode: "123456" });
-  assert.match(built.xml, /<EmpEmisProp>/);
+  assert.doesNotMatch(built.xml, /EmpEmisProp/);
   assert.match(built.xml, /<modTrans>0<\/modTrans>/);
   // ZX02-10: o QR-Code vai em CDATA para preservar o e-comercial.
   assert.match(built.xml, /<qrCodDCe><!\[CDATA\[https:\/\/www\.fazenda\.pr\.gov\.br\/dce\/qrcode\?chDCe=/);

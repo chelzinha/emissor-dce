@@ -8,9 +8,12 @@ export function buildConsultationXml(environment, accessKey) {
   return `<consSitDCe xmlns="${DCE_NAMESPACE}" versao="${DCE_LAYOUT_VERSION}"><tpAmb>${tpAmb}</tpAmb><xServ>CONSULTAR</xServ><chDCe>${key}</chDCe></consSitDCe>`;
 }
 
-export function buildStatusXml(environment) {
+// XSD consStatServDCe v1.00: tpAmb, cUF (UF de atendimento) e xServ, nesta ordem.
+// Sem o cUF a SEFAZ responde 215 (falha no schema XML).
+export function buildStatusXml(environment, cUF = "41") {
   const tpAmb = String(environment) === "1" ? "1" : "2";
-  return `<consStatServDCe xmlns="${DCE_NAMESPACE}" versao="${DCE_LAYOUT_VERSION}"><tpAmb>${tpAmb}</tpAmb><xServ>STATUS</xServ></consStatServDCe>`;
+  const uf = /^\d{2}$/.test(String(cUF)) ? String(cUF) : "41";
+  return `<consStatServDCe xmlns="${DCE_NAMESPACE}" versao="${DCE_LAYOUT_VERSION}"><tpAmb>${tpAmb}</tpAmb><cUF>${uf}</cUF><xServ>STATUS</xServ></consStatServDCe>`;
 }
 
 export function buildCancellationXml({ environment, accessKey, issuerCnpj, protocolNumber, reason, organizationCode = "91" }) {

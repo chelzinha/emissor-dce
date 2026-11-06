@@ -44,6 +44,16 @@ function formatMoney(value) {
   return Number(value).toFixed(2);
 }
 
+const NCM_NOT_CLASSIFIED = "00000000";
+// CNPJ dos Correios (ECT). CNPJTransp é obrigatório no XSD (aceita vazio).
+const CORREIOS_CNPJ = "34028316000103";
+
+function transportCnpj(transport = {}) {
+  const informed = String(transport.carrierCnpj || "").replace(/\D/g, "");
+  if (informed.length === 14) return informed;
+  return String(transport.mode) === "0" ? CORREIOS_CNPJ : "";
+}
+
 function addressXml(name, address, destination = false) {
   return [
     `<${name}>`,
@@ -63,6 +73,10 @@ function addressXml(name, address, destination = false) {
   ].join("");
 }
 
+// Emissão própria (tpEmit=2): só o grupo emit. O grupo EmpEmisProp (D15) foi
+// removido pela NT 2024.001 (regras D16-10/D16-20 revogadas) e não existe no XSD
+// de produção; enviá-lo gera a rejeição 215 (falha no schema XML).
+// Regra C02-40: sem grupo Fisco/Marketplace/Transportadora/ECT, tpEmit deve ser 2.
 function issuerXml(issuer) {
   return [
     "<emit>",
@@ -70,10 +84,6 @@ function issuerXml(issuer) {
     tag("xNome", issuer.name),
     addressXml("enderEmit", issuer.address),
     "</emit>",
-    "<EmpEmisProp>",
-    tag("CNPJ", issuer.cnpj),
-    tag("xNome", issuer.name),
-    "</EmpEmisProp>",
   ].join("");
 }
 
@@ -92,7 +102,8 @@ function itemsXml(items) {
     `<det nItem="${index + 1}">`,
     "<prod>",
     tag("xProd", item.description),
-    optionalTag("NCM", item.ncm),
+    // NCM é obrigatório no XSD; regra I03-10: sem classificação, informar 00000000.
+    tag("NCM", item.ncm || NCM_NOT_CLASSIFIED),
     tag("qCom", formatQuantity(item.quantity)),
     tag("vUnCom", formatMoney(item.unitValue)),
     tag("vProd", formatMoney(item.totalValue)),
@@ -139,7 +150,7 @@ export function buildUnsignedDce(document, options = {}) {
     recipientXml(document.recipient),
     itemsXml(document.items),
     `<total>${tag("vDC", formatMoney(total))}</total>`,
-    `<transp>${tag("modTrans", document.transport.mode)}</transp>`,
+    `<transp>${tag("modTrans", document.transport.mode)}${tag("CNPJTransp", transportCnpj(document.transport))}</transp>`,
     infAdic,
     infDec,
     "</infDCe>",

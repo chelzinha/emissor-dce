@@ -1,4 +1,4 @@
-import { environmentConfig } from "./_shared/constants.mjs";
+import { UF_CODES, environmentConfig } from "./_shared/constants.mjs";
 import { readPkcs12 } from "./_shared/certificate.mjs";
 import { json, parseJson, publicError, requireUser } from "./_shared/http.mjs";
 import { buildStatusXml } from "./_shared/services.mjs";
@@ -15,7 +15,7 @@ export default async function handler(req) {
     const soap = await postSoap({
       url: config.statusUrl,
       action: config.statusSoapAction,
-      body: buildSoapEnvelope(buildStatusXml(config.tpAmb), config.statusNamespace),
+      body: buildSoapEnvelope(buildStatusXml(config.tpAmb, UF_CODES[String(body.uf || "").toUpperCase()] || "41"), config.statusNamespace),
       certificate,
     });
     return json({ ok: true, data: parseServiceResponse(soap.body) });
