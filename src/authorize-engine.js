@@ -7,6 +7,16 @@ export const AUTHORIZE_SIZE = 5;    // DC-e por chamada ao autorizador (limite d
 export const SAVE_SIZE = 2;         // resultados gravados por chamada ao Apps Script (cada um cria 2 XML no Drive)
 const PENDING_BATCH_STATUS = ["PREPARED", "PROCESSING", "PARTIAL"];
 const RETRY_DOCUMENT_STATUS = ["PREPARED", "ERROR"];
+// Recusas de horário (703 data futura, 704 data atrasada) não dependem dos dados da remessa:
+// a mesma DC-e é reenviada com dhEmi novo. Ficam como ERROR para o lote continuar retomável.
+const TIMING_REJECTIONS = ["703", "704"];
+
+export function normalizeResult(result) {
+  if (result?.status === "REJECTED" && TIMING_REJECTIONS.includes(String(result.cStat || ""))) {
+    return { ...result, status: "ERROR", reason: `${result.cStat} ${result.reason || ""}`.trim() };
+  }
+  return result;
+}
 
 export class PauseError extends Error {
   constructor(message, cause) { super(message); this.name = "PauseError"; this.cause = cause; }
@@ -71,6 +81,7 @@ export async function runAuthorization({ readyIds = [], pendingBatches = [], dep
   const started = now();
   let done = 0;
   let expected = readyIds.length;
+  let xmlSaveFailed = null;
   const report = (stage) => onProgress({ stage, done, expected, ...totals, elapsedMs: now() - started });
 
   async function processDocuments(batchId, documents) {
@@ -78,10 +89,15 @@ export async function runAuthorization({ readyIds = [], pendingBatches = [], dep
       let response;
       try { response = await withRetry(() => deps.authorize(group), { wait }); }
       catch (error) { throw new PauseError("A comunicação com a SEFAZ falhou. Nenhuma declaração foi perdida.", error); }
-      const results = response.results || [];
+      const results = (response.results || []).map(normalizeResult);
       for (const part of chunk(results, SAVE_SIZE)) {
-        try { await withRetry(() => deps.saveResults(batchId, part), { wait }); }
+        try {
+          if (xmlSaveFailed) throw xmlSaveFailed;
+          await withRetry(() => deps.saveResults(batchId, part), { wait });
+        }
         catch (error) {
+          // Apps Script antigo (MimeType.XML inexistente) nunca grava XML: o resto da sessão vai direto sem XML.
+          if (/mimeType/i.test(String(error?.message || ""))) xmlSaveFailed = error;
           // Plano B: grava status, chave e protocolo sem os arquivos XML. Os XML ficam
           // guardados na sessão (keepXml) para não se perderem.
           const slim = part.map(({ signedXml, processedXml, ...rest }) => rest);

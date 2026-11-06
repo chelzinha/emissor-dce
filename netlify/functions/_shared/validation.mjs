@@ -9,13 +9,22 @@ import {
 } from "./constants.mjs";
 
 /** Data e hora atuais com o deslocamento de fuso local, formato do leiaute. */
-export function agoraComFusoLocal(data = new Date()) {
+// Fuso oficial de cada UF (Brasil sem horário de verão desde 2019).
+// A SEFAZ rejeita (703) um dhEmi em UTC "+00:00": a hora precisa sair no fuso do emitente.
+const UF_OFFSET_MIN = { AC: -300, AM: -240, RO: -240, RR: -240, MT: -240, MS: -240 };
+
+export function fusoDaUf(uf) {
+  return UF_OFFSET_MIN[String(uf || "").toUpperCase()] ?? -180;
+}
+
+export function agoraComFusoLocal(data = new Date(), uf = "") {
   const pad = (n) => String(Math.floor(Math.abs(n))).padStart(2, "0");
-  const offsetMin = -data.getTimezoneOffset();
+  const offsetMin = fusoDaUf(uf);
+  const local = new Date(data.getTime() + offsetMin * 60_000);
   const sinal = offsetMin >= 0 ? "+" : "-";
   const offset = `${sinal}${pad(offsetMin / 60)}:${pad(offsetMin % 60)}`;
-  return `${data.getFullYear()}-${pad(data.getMonth() + 1)}-${pad(data.getDate())}`
-    + `T${pad(data.getHours())}:${pad(data.getMinutes())}:${pad(data.getSeconds())}${offset}`;
+  return `${local.getUTCFullYear()}-${pad(local.getUTCMonth() + 1)}-${pad(local.getUTCDate())}`
+    + `T${pad(local.getUTCHours())}:${pad(local.getUTCMinutes())}:${pad(local.getUTCSeconds())}${offset}`;
 }
 
 export function digits(value) {
@@ -125,7 +134,7 @@ export function normalizeDceDocument(input) {
   // faz os primeiros documentos chegarem atrasados. Quando o chamador nao envia
   // dhEmi, ele e gerado AGORA, imediatamente antes da montagem e da assinatura.
   const emissionDateTime = cleanText(source.identification?.emissionDateTime, 30)
-    || agoraComFusoLocal();
+    || agoraComFusoLocal(new Date(), uf);
 
   if (!isValidCnpj(issuerCnpj)) errors.push("issuer.cnpj: CNPJ do emitente inválido");
   if (recipientDocumentType === "CNPJ" && !isValidCnpj(recipientDocument)) {

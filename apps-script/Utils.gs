@@ -125,7 +125,7 @@ function writeXmlFile_(userId, cnpj, fileName, content) {
   const userFolder = getOrCreateFolder_(getRootFolder_(), userId);
   const companyFolder = getOrCreateFolder_(userFolder, cnpj);
   const yearFolder = getOrCreateFolder_(companyFolder, String(new Date().getUTCFullYear()));
-  return yearFolder.createFile(sanitizeFileName_(fileName), String(content), MimeType.XML).getId();
+  return yearFolder.createFile(sanitizeFileName_(fileName), String(content), 'application/xml').getId();
 }
 
 function readOwnedXmlFile_(userId, fileId) {

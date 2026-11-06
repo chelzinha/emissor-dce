@@ -17,6 +17,8 @@ export function createNumericCode(random = Math.random) {
 
 export function createAccessKey(document, numericCode = createNumericCode()) {
   const ide = document.identification;
+  // Código numérico gravado na planilha como número perde o zero à esquerda (051023 -> 51023).
+  numericCode = /^\d{1,6}$/.test(String(numericCode ?? "")) ? String(numericCode).padStart(6, "0") : numericCode;
   const yearMonth = ide.emissionDateTime.slice(2, 4) + ide.emissionDateTime.slice(5, 7);
   const base = [
     ide.cUF,

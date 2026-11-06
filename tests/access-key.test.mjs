@@ -20,3 +20,11 @@ test("chave própria possui 44 dígitos e usa tpEmit 2", () => {
   assert.equal(result.key.slice(35, 36), "2");
   assert.equal(result.key.at(-1), String(modulo11(result.key.slice(0, -1))));
 });
+
+test("código numérico salvo sem zero à esquerda ainda forma a chave de 44 dígitos", async () => {
+  const { createAccessKey } = await import("../netlify/functions/_shared/access-key.mjs");
+  const document = { issuer: { cnpj: "7260680000121" }, identification: { cUF: "23", emissionDateTime: "2026-11-06T15:33:53-03:00", model: "99", series: "1", number: "10", issueMode: "1", issuerType: "2", authorizationSite: "0" } };
+  const { key, numericCode } = createAccessKey(document, "51023");
+  assert.equal(numericCode, "051023");
+  assert.equal(key.length, 44);
+});

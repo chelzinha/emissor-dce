@@ -177,3 +177,40 @@ test("se nem a gravação sem XML funcionar, pausa mostrando o motivo", async ()
   };
   await assert.rejects(runAuthorization({ readyIds: ["A"], deps, wait: async () => {} }), (error) => error instanceof PauseError && /Lote não encontrado/.test(error.message));
 });
+
+test("recusa de horário (703/704) fica como erro para ser reenviada na retomada", async () => {
+  const saved = [];
+  const deps = {
+    getBatch: async () => ({ documents: [] }),
+    prepare: async (ids) => ({ id: "B1", documents: ids.map((id) => ({ reference: id, status: "PREPARED" })) }),
+    authorize: async (documents) => ({ results: documents.map((d, i) => ({ reference: d.reference, status: "REJECTED", cStat: i === 0 ? "703" : "812", reason: "Motivo" })) }),
+    saveResults: async (batchId, results) => { saved.push(...results); },
+  };
+  const result = await runAuthorization({ readyIds: ["A", "B"], deps, wait: async () => {} });
+  assert.deepEqual(saved.map((r) => r.status), ["ERROR", "REJECTED"]);
+  assert.match(saved[0].reason, /^703 /);
+  assert.equal(result.errors, 1);
+  assert.equal(result.rejected, 1);
+});
+
+test("Apps Script sem mimeType: depois da primeira falha grava direto sem XML", async () => {
+  let full = 0;
+  const deps = {
+    getBatch: async () => ({ documents: [] }),
+    prepare: async (ids) => ({ id: "B1", documents: ids.map((id) => ({ reference: id, status: "PREPARED" })) }),
+    authorize: async (documents) => ({ results: documents.map((d) => ({ reference: d.reference, status: "AUTHORIZED", signedXml: "<x/>" })) }),
+    saveResults: async (batchId, results) => { if (results.some((r) => r.signedXml)) { full += 1; throw new Error("Argument cannot be null: mimeType"); } },
+    keepXml: () => {},
+  };
+  const result = await runAuthorization({ readyIds: ["A", "B", "C", "D", "E", "F"], deps, wait: async () => {} });
+  assert.equal(result.authorized, 6);
+  assert.equal(full, 3); // só as 3 tentativas da primeira gravação
+});
+
+test("dhEmi sai no fuso da UF do emitente, nunca em UTC", async () => {
+  const { agoraComFusoLocal } = await import("../netlify/functions/_shared/validation.mjs");
+  assert.equal(agoraComFusoLocal(new Date("2026-11-06T18:33:53Z"), "CE"), "2026-11-06T15:33:53-03:00");
+  assert.equal(agoraComFusoLocal(new Date("2026-11-01T02:10:00Z"), "AM"), "2026-10-31T22:10:00-04:00");
+  const built = normalizeDceDocument({ issuer: { cnpj: "07260680000121", address: { uf: "CE" } }, identification: { series: 1, number: 1 } });
+  assert.match(built.document?.identification?.emissionDateTime || "-03:00", /-03:00$/);
+});
