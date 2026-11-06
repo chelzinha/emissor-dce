@@ -296,6 +296,11 @@ async function startAuthorization() {
         prepare: (ids) => dataAction("batch.prepare", { remittanceIds: ids, environment: CFG.environment }),
         authorize: (documents) => api("/api/dce/authorize", { method: "POST", body: JSON.stringify({ documents, ...credentials, confirmProduction }) }),
         saveResults: (batchId, results) => dataAction("batch.saveResults", { batchId, results }),
+        keepXml: (part, error) => {
+          S.xmlBackup = S.xmlBackup || [];
+          part.forEach((row) => { if (row.signedXml || row.processedXml) S.xmlBackup.push({ reference: row.reference, accessKey: row.accessKey, status: row.status, signedXml: row.signedXml || "", processedXml: row.processedXml || "" }); });
+          S.xmlBackupReason = error?.message || "";
+        },
       },
       onProgress: (progress) => { S.progress = progress; updateRun(); },
     });
@@ -305,6 +310,7 @@ async function startAuthorization() {
   } catch (error) {
     S.running = false;
     S.pause = error instanceof PauseError ? error.message : `Ocorreu uma falha: ${error.message}`;
+    if (error instanceof PauseError && error.cause?.message && !S.pause.includes(error.cause.message)) S.pause += ` Detalhe: ${error.cause.message}`;
     renderRun();
   } finally {
     S.running = false;
@@ -331,13 +337,31 @@ function renderRun() {
     ${S.pause ? `<div class="wz-note error">${icon.alert}<div><b>${h(S.pause)}</b> As declarações já autorizadas estão garantidas. Ao continuar, o sistema retoma de onde parou.</div></div>` : '<div class="wz-note warn">' + icon.alert + '<div><b>Não feche esta página</b> e mantenha o computador ligado até o fim.</div></div>'}
     <div id="run">${runContent()}</div>
     ${S.pause ? '<div class="wz-actions"><button class="wz-primary" id="resume">Continuar de onde parou</button></div>' : ""}
+    ${S.pause ? backupButton() : ""}
   </section>`);
   root.querySelector("#resume")?.addEventListener("click", startAuthorization);
+  bindBackup();
 }
 
 function updateRun() {
   const box = root.querySelector("#run");
   if (box) box.innerHTML = runContent(); else renderRun();
+}
+
+// Cópia dos XML quando o Apps Script não conseguiu gravá-los no Drive (plano B do motor).
+function backupButton() {
+  return S.xmlBackup?.length ? `<div class="wz-note warn">${icon.alert}<div><b>Guarde uma cópia dos arquivos.</b> As declarações estão registradas, mas os arquivos XML não foram salvos no servidor. Baixe a cópia e envie para a ${h(CFG.agfName)}.</div></div><div class="wz-actions center"><button class="wz-ghost" id="xml-backup">Baixar cópia dos XML (${S.xmlBackup.length})</button></div>` : "";
+}
+
+function bindBackup() {
+  root.querySelector("#xml-backup")?.addEventListener("click", () => {
+    const blob = new Blob([JSON.stringify({ geradoEm: new Date().toISOString(), motivo: S.xmlBackupReason || "", documentos: S.xmlBackup }, null, 2)], { type: "application/json" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `DCe-XML-copia-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(link.href), 2000);
+  });
 }
 
 // ---------- 6. concluído ----------
@@ -350,9 +374,11 @@ function renderDone() {
     ${r.errors ? '<div class="wz-actions center"><button class="wz-primary" id="retry">Enviar de novo as pendentes</button></div>' : ""}
     ${r.rejections.length ? `<h2>Recusadas pela SEFAZ</h2><p class="wz-muted">A ${h(CFG.agfName)} vai corrigir estas e avisar você, se for preciso autorizar de novo.</p><div class="wz-list">${r.rejections.slice(0, 50).map((item) => `<div><b>${h(item.name || item.reference)}</b><em>${h(item.reason)}</em></div>`).join("")}</div>` : ""}
     <div class="wz-note ok">${icon.shield}<div>${allGood ? `Você já pode fechar esta página. A ${h(CFG.agfName)} cuida da impressão e da postagem.` : `Avise a ${h(CFG.agfName)} que a autorização terminou.`}</div></div>
+    ${backupButton()}
     <div class="wz-actions center"><a class="wz-ghost" href="${whatsLink(`Olá! Terminei a autorização das DC-e: ${r.authorized} autorizadas${r.rejected ? `, ${r.rejected} recusadas` : ""}${r.errors ? `, ${r.errors} pendentes` : ""}.`)}" target="_blank" rel="noopener">Avisar a AGF pelo WhatsApp</a></div>
   </section>`, { stepper: false });
   root.querySelector("#retry")?.addEventListener("click", startAuthorization);
+  bindBackup();
 }
 
 // ---------- boot ----------

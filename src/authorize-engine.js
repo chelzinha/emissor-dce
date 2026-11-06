@@ -81,7 +81,18 @@ export async function runAuthorization({ readyIds = [], pendingBatches = [], dep
       const results = response.results || [];
       for (const part of chunk(results, SAVE_SIZE)) {
         try { await withRetry(() => deps.saveResults(batchId, part), { wait }); }
-        catch (error) { throw new PauseError("Não foi possível registrar o resultado. Nenhuma declaração foi perdida.", error); }
+        catch (error) {
+          // Plano B: grava status, chave e protocolo sem os arquivos XML. Os XML ficam
+          // guardados na sessão (keepXml) para não se perderem.
+          const slim = part.map(({ signedXml, processedXml, ...rest }) => rest);
+          try {
+            await withRetry(() => deps.saveResults(batchId, slim), { wait });
+            deps.keepXml?.(part, error);
+          } catch (slimError) {
+            const detail = slimError?.message || error?.message || "erro desconhecido";
+            throw new PauseError(`Não foi possível registrar o resultado (${detail}). Nenhuma declaração foi perdida.`, slimError);
+          }
+        }
       }
       results.forEach((result) => {
         if (result.status === "AUTHORIZED") totals.authorized += 1;

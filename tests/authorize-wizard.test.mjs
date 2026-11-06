@@ -151,3 +151,29 @@ test("CNPJ salvo como número na planilha (sem zero à esquerda) continua válid
   assert.deepEqual(result.errors, []);
   assert.equal(result.document.issuer.cnpj, "07260680000121");
 });
+
+test("se a gravação com XML falhar, grava sem XML e guarda os XML na sessão", async () => {
+  const kept = [];
+  let calls = 0;
+  const deps = {
+    getBatch: async () => ({ documents: [] }),
+    prepare: async (ids) => ({ id: "B1", documents: ids.map((id) => ({ reference: id, status: "PREPARED" })) }),
+    authorize: async (documents) => ({ results: documents.map((d) => ({ reference: d.reference, status: "AUTHORIZED", signedXml: "<x/>", processedXml: "<y/>" })) }),
+    saveResults: async (batchId, results) => { calls += 1; if (results.some((r) => r.signedXml)) throw new Error("Drive indisponível"); },
+    keepXml: (part) => kept.push(...part),
+  };
+  const result = await runAuthorization({ readyIds: ["A", "B", "C"], deps, wait: async () => {} });
+  assert.equal(result.authorized, 3);
+  assert.equal(kept.length, 3);
+  assert.ok(calls > 2);
+});
+
+test("se nem a gravação sem XML funcionar, pausa mostrando o motivo", async () => {
+  const deps = {
+    getBatch: async () => ({ documents: [] }),
+    prepare: async (ids) => ({ id: "B1", documents: ids.map((id) => ({ reference: id, status: "PREPARED" })) }),
+    authorize: async (documents) => ({ results: documents.map((d) => ({ reference: d.reference, status: "AUTHORIZED" })) }),
+    saveResults: async () => { throw new Error("Lote não encontrado."); },
+  };
+  await assert.rejects(runAuthorization({ readyIds: ["A"], deps, wait: async () => {} }), (error) => error instanceof PauseError && /Lote não encontrado/.test(error.message));
+});
