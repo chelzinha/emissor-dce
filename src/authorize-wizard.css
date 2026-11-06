@@ -224,3 +224,7 @@ b, strong { color: var(--wz-navy); }
   .wz-login-hero h1 { font-size: 38px; }
   .wz-login-card { padding: 38px 36px; }
 }
+.wz-resume { width: 100%; text-align: left; border: 1px solid #F2DF9E; cursor: pointer; font: inherit; transition: transform .15s ease, box-shadow .15s ease; }
+.wz-resume:hover { transform: translateY(-1px); box-shadow: 0 8px 18px -12px rgba(138, 106, 0, .5); }
+.wz-resume:focus-visible { outline: 3px solid rgba(224, 161, 0, .45); outline-offset: 2px; }
+.wz-resume-cta { display: block; width: fit-content; margin-top: 8px; padding: 8px 14px; border-radius: 10px; background: var(--wz-amber); color: #fff; font-weight: 700; }

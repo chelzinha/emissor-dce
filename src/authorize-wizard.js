@@ -158,7 +158,7 @@ function renderStart() {
     <h1>Declarações prontas para autorização</h1>
     <div class="wz-company">${icon.file}<div><small>Emitente</small><b>${h(name)}</b>${S.company.profile?.cnpj || S.company.cnpj ? `<span>CNPJ ${h(cnpjMask(S.company.profile?.cnpj || S.company.cnpj))}</span>` : ""}</div></div>
     <p class="wz-lead">A <b>DC-e</b> (Declaração de Conteúdo eletrônica) é o documento fiscal que acompanha cada envio. A ${h(CFG.agfName)} já preparou tudo. Falta somente a <b>assinatura digital com o e-CNPJ</b> da empresa.</p>
-    ${S.pending.length ? `<div class="wz-note warn">${icon.alert}<div><b>Existe uma autorização interrompida.</b> Ao continuar, o sistema retoma exatamente de onde parou, sem duplicar nenhuma declaração.</div></div>` : ""}
+    ${S.pending.length ? `<button type="button" class="wz-note warn wz-resume" id="resume-start">${icon.alert}<div><b>Existe uma autorização interrompida.</b> O sistema retoma exatamente de onde parou, sem duplicar nenhuma declaração.<span class="wz-resume-cta">Continuar de onde parou →</span></div></button>` : ""}
     <h2>Antes de começar, tenha em mãos</h2>
     <ul class="wz-needs">
       <li>${icon.file}<div><b>O arquivo do certificado e-CNPJ A1</b><span>Termina em <b>.pfx</b> ou <b>.p12</b>. Precisa estar neste computador.</span></div></li>
@@ -169,7 +169,9 @@ function renderStart() {
     <details class="wz-faq"><summary>Meu certificado é um cartão ou token USB</summary><p>Esse tipo (A3) não funciona neste sistema. É necessário o certificado em arquivo (A1). Fale com a ${h(CFG.agfName)} antes de continuar.</p></details>
     <div class="wz-actions"><button class="wz-primary" id="next">Começar</button></div>
   </section>`);
-  root.querySelector("#next").addEventListener("click", () => go("conferir"));
+  root.querySelector("#next").addEventListener("click", () => { S.resuming = false; go("conferir"); });
+  // Atalho: retomar direto pelo certificado (as confirmações já foram feitas na primeira tentativa).
+  root.querySelector("#resume-start")?.addEventListener("click", () => { S.resuming = true; go("certificado"); });
 }
 
 // ---------- 2. conferir ----------
@@ -211,7 +213,7 @@ function certificateProblem(info) {
 function renderCertificate() {
   const info = S.cert.info; const problem = certificateProblem(info);
   frame(`<section class="wz-card">
-    <p class="wz-eyebrow">Etapa 3 de 5</p>
+    <p class="wz-eyebrow">${S.resuming ? "Continuar de onde parou" : "Etapa 3 de 5"}</p>
     <h1>Informe o certificado digital</h1>
     <p class="wz-lead">Selecione o arquivo do e-CNPJ A1 e digite a senha dele. O sistema confere se o certificado é da empresa certa e se está válido.</p>
     <div class="wz-howto">
@@ -221,7 +223,7 @@ function renderCertificate() {
     <label class="wz-drop ${S.cert.name ? "filled" : ""}">${icon.file}<span>${S.cert.name ? `<b>${h(S.cert.name)}</b><small>Clique para trocar o arquivo</small>` : "<b>Clique para selecionar o certificado</b><small>Arquivo .pfx ou .p12</small>"}</span><input id="cert" type="file" accept=".pfx,.p12,application/x-pkcs12"></label>
     <label class="wz-field">Senha do certificado<div class="wz-pass"><input id="pass" type="password" autocomplete="off" value="${h(S.passphrase)}"><button type="button" class="wz-link" id="toggle">Mostrar</button></div></label>
     ${info ? (problem ? `<div class="wz-note error">${icon.alert}<div>${h(problem)}</div></div>` : `<div class="wz-cert-ok">${icon.check}<div><b>Certificado conferido</b><span>${h(info.commonName)}</span><span>CNPJ ${h(cnpjMask(info.cnpj))} · válido até ${h(dateBr(info.validTo))}</span></div></div>`) : ""}
-    <div class="wz-actions"><button class="wz-ghost" id="back">Voltar</button>${info && !problem ? '<button class="wz-primary" id="next">Continuar</button>' : '<button class="wz-primary" id="check">Conferir certificado</button>'}</div>
+    <div class="wz-actions"><button class="wz-ghost" id="back">Voltar</button>${info && !problem ? `<button class="wz-primary" id="next">${S.resuming ? "Continuar autorização" : "Continuar"}</button>` : '<button class="wz-primary" id="check">Conferir certificado</button>'}</div>
   </section>`);
   root.querySelector("#cert").addEventListener("change", async (event) => {
     const file = event.target.files[0]; if (!file) return;
@@ -235,8 +237,8 @@ function renderCertificate() {
     const again = root.querySelector("#pass"); again.focus(); again.setSelectionRange(pos, pos);
   });
   root.querySelector("#toggle").addEventListener("click", (event) => { const input = root.querySelector("#pass"); input.type = input.type === "password" ? "text" : "password"; event.target.textContent = input.type === "password" ? "Mostrar" : "Ocultar"; });
-  root.querySelector("#back").addEventListener("click", () => go("conferir"));
-  root.querySelector("#next")?.addEventListener("click", () => go("confirmar"));
+  root.querySelector("#back").addEventListener("click", () => { if (S.resuming) { S.resuming = false; go("inicio"); } else go("conferir"); });
+  root.querySelector("#next")?.addEventListener("click", () => (S.resuming ? startAuthorization() : go("confirmar")));
   root.querySelector("#check")?.addEventListener("click", checkCertificate);
 }
 
