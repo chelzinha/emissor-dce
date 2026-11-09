@@ -61,6 +61,58 @@ export function summarizeReady(remittances = []) {
   };
 }
 
+// ---------- Lotes (cada arquivo importado pela AGF é um lote) ----------
+// Ritmo medido em produção (assinatura + SEFAZ + gravação dos XML no Drive): cerca de 7 s por declaração.
+export const PER_DOC_ESTIMATE_MS = 7000;
+const AMBITO_ORDER = ["LOCAL", "ESTADUAL", "NACIONAL"];
+const OPEN_STATUS = ["READY", "RESERVED", "ERROR"];
+
+function lotNameParts(fileName = "", services = []) {
+  const name = String(fileName || "").toUpperCase();
+  const fromName = AMBITO_ORDER.find((ambito) => name.includes(ambito));
+  const fromService = AMBITO_ORDER.find((ambito) => services.some((service) => String(service || "").toUpperCase().includes(ambito)));
+  const match = name.match(/LOTE[_\s-]*(\d+)/);
+  return { ambito: fromName || fromService || "", number: match ? Number(match[1]) : 0 };
+}
+
+/**
+ * Agrupa as remessas por arquivo importado e define a ordem de autorização:
+ * LOCAL, ESTADUAL e NACIONAL; dentro de cada um, pelo número do lote no nome do arquivo.
+ * O lote atual é o primeiro que ainda tem declaração pronta, reservada ou com erro.
+ */
+export function buildLots(remittances = [], imports = []) {
+  const importsById = new Map((imports || []).map((item) => [String(item.ID), item]));
+  const groups = new Map();
+  remittances.forEach((row) => {
+    const id = String(row.importId || "");
+    if (!groups.has(id)) groups.set(id, []);
+    groups.get(id).push(row);
+  });
+  const lots = [...groups.entries()].map(([id, rows]) => {
+    const info = importsById.get(id) || {};
+    const fileName = String(info.FILE_NAME || "");
+    const { ambito, number } = lotNameParts(fileName, rows.map((row) => row.service));
+    const count = (statuses) => rows.filter((row) => statuses.includes(String(row.status))).length;
+    const ready = count(["READY"]);
+    const open = count(OPEN_STATUS);
+    return {
+      id, fileName, ambito, number, createdAt: String(info.CREATED_AT || ""),
+      label: number ? `Lote ${String(number).padStart(2, "0")}` : /TESTE/i.test(fileName) ? "Lote de teste" : (fileName.replace(/\.[a-z0-9]+$/i, "") || "Lote"),
+      total: rows.length, ready, open, authorized: count(["AUTHORIZED"]), pendingFix: count(["INVALID", "REJECTED"]),
+      readyRows: rows.filter((row) => row.status === "READY"),
+    };
+  }).filter((lot) => lot.authorized + lot.open > 0);
+  lots.sort((a, b) => {
+    const ia = AMBITO_ORDER.indexOf(a.ambito); const ib = AMBITO_ORDER.indexOf(b.ambito);
+    return (ia < 0 ? 9 : ia) - (ib < 0 ? 9 : ib) || a.number - b.number || a.createdAt.localeCompare(b.createdAt);
+  });
+  lots.forEach((lot) => { lot.state = lot.open ? "open" : "done"; });
+  const current = lots.find((lot) => lot.open) || null;
+  if (current) current.state = "current";
+  lots.forEach((lot, index) => { lot.position = index + 1; });
+  return { lots, current };
+}
+
 export function pendingBatchesFor(batches = [], environment) {
   return batches.filter((batch) => PENDING_BATCH_STATUS.includes(String(batch.STATUS)) && String(batch.ENVIRONMENT) === String(environment));
 }

@@ -214,3 +214,36 @@ test("dhEmi sai no fuso da UF do emitente, nunca em UTC", async () => {
   const built = normalizeDceDocument({ issuer: { cnpj: "07260680000121", address: { uf: "CE" } }, identification: { series: 1, number: 1 } });
   assert.match(built.document?.identification?.emissionDateTime || "-03:00", /-03:00$/);
 });
+
+test("lotes: ordem LOCAL, ESTADUAL, NACIONAL pelo número do lote; atual é o primeiro com pendência", async () => {
+  const { buildLots } = await import("../src/authorize-engine.js");
+  const imports = [
+    { ID: "n1", FILE_NAME: "DCE_AABNB_NACIONAL_LOTE_01_100.csv", CREATED_AT: "2026-11-09T10:00:00Z" },
+    { ID: "l2", FILE_NAME: "DCE_AABNB_LOCAL_LOTE_02_100.csv", CREATED_AT: "2026-11-09T09:00:00Z" },
+    { ID: "l1", FILE_NAME: "DCE_AABNB_LOCAL_LOTE_01_90.csv", CREATED_AT: "2026-11-09T11:00:00Z" },
+    { ID: "e1", FILE_NAME: "DCE_AABNB_ESTADUAL_LOTE_01_100.csv", CREATED_AT: "2026-11-09T08:00:00Z" },
+    { ID: "t", FILE_NAME: "DCE_AABNB_TESTE_10.csv", CREATED_AT: "2026-11-04T08:00:00Z" },
+  ];
+  const rows = [
+    ...Array.from({ length: 3 }, (_, i) => ({ id: `t${i}`, importId: "t", service: "MDPB LOCAL", status: "AUTHORIZED" })),
+    ...Array.from({ length: 4 }, (_, i) => ({ id: `a${i}`, importId: "l1", service: "MDPB LOCAL", status: i ? "AUTHORIZED" : "INVALID" })),
+    ...Array.from({ length: 2 }, (_, i) => ({ id: `b${i}`, importId: "l2", service: "MDPB LOCAL", status: "READY" })),
+    { id: "c", importId: "e1", service: "MDPB ESTADUAL", status: "READY" },
+    { id: "d", importId: "n1", service: "MDPB NACIONAL", status: "READY" },
+  ];
+  const { lots, current } = buildLots(rows, imports);
+  assert.deepEqual(lots.map((lot) => `${lot.ambito}:${lot.number}`), ["LOCAL:0", "LOCAL:1", "LOCAL:2", "ESTADUAL:1", "NACIONAL:1"]);
+  assert.equal(current.id, "l2");
+  assert.deepEqual(lots.map((lot) => lot.state), ["done", "done", "current", "open", "open"]);
+  assert.equal(lots[1].pendingFix, 1);
+  assert.deepEqual(current.readyRows.map((row) => row.id), ["b0", "b1"]);
+});
+
+test("lote interrompido (reservado ou com erro) continua sendo o lote atual", async () => {
+  const { buildLots } = await import("../src/authorize-engine.js");
+  const imports = [{ ID: "l1", FILE_NAME: "X_LOCAL_LOTE_01.csv" }, { ID: "l2", FILE_NAME: "X_LOCAL_LOTE_02.csv" }];
+  const rows = [{ id: "1", importId: "l1", status: "RESERVED" }, { id: "2", importId: "l1", status: "AUTHORIZED" }, { id: "3", importId: "l2", status: "READY" }];
+  const { current } = buildLots(rows, imports);
+  assert.equal(current.id, "l1");
+  assert.equal(current.ready, 0);
+});

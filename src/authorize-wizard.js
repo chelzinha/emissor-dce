@@ -4,7 +4,7 @@ import "./authorize-wizard.css";
 import { getUser, login, logout, requestPasswordRecovery } from "@netlify/identity";
 import { api, dataAction, fileToBase64 } from "./api.js";
 import { cnpjDigits, digits } from "./validation.js";
-import { estimateSeconds, PauseError, pendingBatchesFor, runAuthorization, summarizeReady } from "./authorize-engine.js";
+import { buildLots, estimateSeconds, PauseError, PER_DOC_ESTIMATE_MS, pendingBatchesFor, runAuthorization, summarizeReady } from "./authorize-engine.js";
 
 const CFG = Object.freeze({
   agfName: "AGF José Bonifácio",
@@ -15,7 +15,7 @@ const STEPS = [["inicio", "Início"], ["conferir", "Conferir"], ["certificado", 
 
 const root = document.querySelector("#wizard");
 const S = {
-  user: null, step: "inicio", company: null, remittances: [], batches: [], summary: null, pending: [],
+  user: null, step: "inicio", company: null, remittances: [], batches: [], imports: [], summary: null, overall: null, pending: [], lots: [], lot: null,
   cert: { base64: "", name: "", info: null }, passphrase: "", accepted: { eligibility: false, production: false },
   search: "", progress: null, result: null, pause: null, running: false,
 };
@@ -27,6 +27,10 @@ const int = (value) => Number(value || 0).toLocaleString("pt-BR");
 const cnpjMask = (value) => cnpjDigits(value).replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
 const dateBr = (value) => (value ? new Date(value).toLocaleDateString("pt-BR") : "");
 const whatsLink = (text) => `https://wa.me/${CFG.agfWhatsApp}?text=${encodeURIComponent(text)}`;
+const lotsMode = () => S.lots.length > 1;
+const lotName = (lot) => (lot ? [lot.ambito, lot.label].filter(Boolean).join(" · ") : "");
+const estimate = (count) => duration(estimateSeconds(count, 0, 0, PER_DOC_ESTIMATE_MS));
+const capitalize = (text) => text.charAt(0).toUpperCase() + text.slice(1);
 const totalToAuthorize = () => (S.summary?.total || 0) + S.pending.reduce((sum, batch) => sum + Number(batch.TOTAL || 0) - Number(batch.AUTHORIZED || 0) - Number(batch.REJECTED || 0), 0);
 
 function duration(seconds) {
@@ -134,9 +138,16 @@ function renderLogin(message = "") {
 }
 
 async function loadData() {
-  const [company, remittances, batches] = await Promise.all([dataAction("company.get", {}), dataAction("remittances.list", {}), dataAction("batches.list", {})]);
-  S.company = company; S.remittances = remittances || []; S.batches = batches || [];
-  S.summary = summarizeReady(S.remittances);
+  const [company, remittances, batches, imports] = await Promise.all([
+    dataAction("company.get", {}), dataAction("remittances.list", {}), dataAction("batches.list", {}),
+    dataAction("imports.list", {}).catch(() => []),
+  ]);
+  S.company = company; S.remittances = remittances || []; S.batches = batches || []; S.imports = Array.isArray(imports) ? imports : [];
+  S.overall = summarizeReady(S.remittances);
+  // Cada arquivo importado é um lote. Com mais de um lote, só o lote atual é autorizado de cada vez.
+  const { lots, current } = buildLots(S.remittances, S.imports);
+  S.lots = lots; S.lot = current;
+  S.summary = lotsMode() && current ? summarizeReady(current.readyRows) : S.overall;
   S.pending = pendingBatchesFor(S.batches, CFG.environment);
 }
 
@@ -150,9 +161,10 @@ function renderStart() {
   const total = totalToAuthorize();
   const name = S.company.name || S.company.profile?.name || "sua empresa";
   if (!total) {
-    frame(`<section class="wz-card"><div class="wz-empty ok">${icon.check}<h1>Nada pendente</h1><p>Não há declarações aguardando autorização.${S.summary.authorized ? ` ${int(S.summary.authorized)} já foram autorizadas.` : ""}</p><p>Se você esperava encontrar declarações aqui, fale com a ${h(CFG.agfName)}.</p></div></section>`);
+    frame(`<section class="wz-card"><div class="wz-empty ok">${icon.check}<h1>Nada pendente</h1><p>Não há declarações aguardando autorização.${S.overall.authorized ? ` ${int(S.overall.authorized)} já foram autorizadas.` : ""}</p><p>Se você esperava encontrar declarações aqui, fale com a ${h(CFG.agfName)}.</p></div></section>`);
     return;
   }
+  if (lotsMode()) return renderLotsStart(name);
   frame(`<section class="wz-card">
     <p class="wz-eyebrow">Olá!</p>
     <h1>Declarações prontas para autorização</h1>
@@ -163,7 +175,7 @@ function renderStart() {
     <ul class="wz-needs">
       <li>${icon.file}<div><b>O arquivo do certificado e-CNPJ A1</b><span>Termina em <b>.pfx</b> ou <b>.p12</b>. Precisa estar neste computador.</span></div></li>
       <li>${icon.key}<div><b>A senha do certificado</b><span>É a senha criada quando o certificado foi emitido. Não é a senha deste site.</span></div></li>
-      <li>${icon.clock}<div><b>${(() => { const text = duration(estimateSeconds(total, 0, 0)); return text.charAt(0).toUpperCase() + text.slice(1); })()} com esta página aberta</b><span>São ${int(total)} declarações. Deixe o computador ligado na tomada.</span></div></li>
+      <li>${icon.clock}<div><b>${capitalize(estimate(total))} com esta página aberta</b><span>São ${int(total)} declarações. Deixe o computador ligado na tomada.</span></div></li>
     </ul>
     <div class="wz-note">${icon.shield}<div>O certificado <b>não é salvo</b>. Ele é usado só durante a autorização e descartado ao fechar a página.</div></div>
     <details class="wz-faq"><summary>Meu certificado é um cartão ou token USB</summary><p>Esse tipo (A3) não funciona neste sistema. É necessário o certificado em arquivo (A1). Fale com a ${h(CFG.agfName)} antes de continuar.</p></details>
@@ -174,6 +186,66 @@ function renderStart() {
   root.querySelector("#resume-start")?.addEventListener("click", () => { S.resuming = true; go("certificado"); });
 }
 
+// ---------- 1b. início em lotes ----------
+function lotChip(lot) {
+  if (lot.state === "done") return `<em class="ok">${icon.check}Autorizado${lot.pendingFix ? ` · ${int(lot.pendingFix)} com pendência` : ""}</em>`;
+  if (lot.state === "current") return `<em class="now">${S.pending.length ? "Em andamento" : "Próximo"}</em>`;
+  return '<em>Na fila</em>';
+}
+
+function lotsGroups() {
+  const order = [...new Set(S.lots.map((lot) => lot.ambito || "OUTROS"))];
+  return order.map((ambito) => {
+    const lots = S.lots.filter((lot) => (lot.ambito || "OUTROS") === ambito);
+    const doneLots = lots.filter((lot) => lot.state === "done").length;
+    const declarations = lots.reduce((sum, lot) => sum + lot.authorized + lot.open, 0);
+    const authorized = lots.reduce((sum, lot) => sum + lot.authorized, 0);
+    const hasCurrent = lots.some((lot) => lot.state === "current");
+    return `<details class="wz-lotgroup" ${hasCurrent ? "open" : ""}><summary><b>${h(ambito === "OUTROS" ? "Outros" : ambito)}</b><span>${int(doneLots)} de ${int(lots.length)} lotes · ${int(authorized)} de ${int(declarations)} declarações</span></summary>
+      <ol class="wz-lots">${lots.map((lot) => `<li class="is-${lot.state}"><i>${lot.state === "done" ? icon.check : (lot.number || "•")}</i><div><b>${h(lot.label)}</b><span>${int(lot.authorized + lot.open)} declarações${lot.state === "done" ? "" : ` · ${estimate(lot.open)}`}</span></div>${lotChip(lot)}</li>`).join("")}</ol></details>`;
+  }).join("");
+}
+
+function renderLotsStart(name) {
+  const lot = S.lot;
+  const all = S.lots.reduce((sum, item) => sum + item.authorized + item.open, 0);
+  const authorized = S.lots.reduce((sum, item) => sum + item.authorized, 0);
+  const percent = all ? Math.round((authorized / all) * 100) : 0;
+  const doneLots = S.lots.filter((item) => item.state === "done").length;
+  const total = totalToAuthorize();
+  frame(`<section class="wz-card">
+    <p class="wz-eyebrow">Olá!</p>
+    <h1>Autorização em lotes</h1>
+    <div class="wz-company">${icon.file}<div><small>Emitente</small><b>${h(name)}</b>${S.company.profile?.cnpj || S.company.cnpj ? `<span>CNPJ ${h(cnpjMask(S.company.profile?.cnpj || S.company.cnpj))}</span>` : ""}</div></div>
+    <p class="wz-lead">A ${h(CFG.agfName)} preparou as declarações de conteúdo (DC-e) em <b>${int(S.lots.length)} lotes</b> de até 100. Autorize <b>um lote por vez</b>, na ordem abaixo.</p>
+    <div class="wz-overall"><div><span>Andamento geral</span><b>${int(authorized)} de ${int(all)} declarações autorizadas</b><small>${int(doneLots)} de ${int(S.lots.length)} lotes concluídos</small></div><strong>${percent}%</strong><div class="wz-progress"><i style="width:${percent}%"></i></div></div>
+    ${S.pending.length ? `<button type="button" class="wz-note warn wz-resume" id="resume-start">${icon.alert}<div><b>O ${h(lotName(lot))} foi interrompido.</b> O sistema retoma exatamente de onde parou, sem duplicar nenhuma declaração.<span class="wz-resume-cta">Continuar de onde parou →</span></div></button>` : ""}
+    <div class="wz-next">
+      <div><span>Próximo lote</span><b>${h(lotName(lot))}</b><small>${int(total)} declarações · ${estimate(total)}</small></div>
+      <button class="wz-primary" id="next">Autorizar este lote</button>
+    </div>
+    <h2>Como funciona</h2>
+    <ol class="wz-rules">
+      <li><b>Um lote por vez, na ordem</b><span>O próximo lote só é liberado quando o anterior termina. Assim cada lote sai certinho para a postagem.</span></li>
+      <li><b>${capitalize(estimate(100))} por lote de 100</b><span>A barra de andamento mostra quanto falta. O tempo depende da internet e da SEFAZ.</span></li>
+      <li><b>Deixe esta página aberta até o fim</b><span>Não feche a aba. Mantenha o computador na tomada e sem entrar em descanso. Você pode usar outros programas enquanto isso.</span></li>
+      <li><b>Se cair, nada se perde</b><span>Se a internet ou o computador desligar, entre de novo e clique em <b>Continuar de onde parou</b>. Nenhuma declaração é duplicada.</span></li>
+      <li><b>Pode dividir em vários dias</b><span>Ao terminar um lote, comece o próximo em seguida ou volte outro dia. A lista mostra onde você parou.</span></li>
+    </ol>
+    <h2>Tenha em mãos</h2>
+    <ul class="wz-needs">
+      <li>${icon.file}<div><b>O arquivo do certificado e-CNPJ A1</b><span>Termina em <b>.pfx</b> ou <b>.p12</b>. Precisa estar neste computador.</span></div></li>
+      <li>${icon.key}<div><b>A senha do certificado</b><span>É a senha criada quando o certificado foi emitido. Não é a senha deste site.</span></div></li>
+    </ul>
+    <div class="wz-note">${icon.shield}<div>O certificado <b>não é salvo</b>. Ele é usado só durante a autorização e descartado ao fechar a página.</div></div>
+    <h2>Lotes</h2>
+    <div class="wz-lotgroups">${lotsGroups()}</div>
+    <details class="wz-faq"><summary>Meu certificado é um cartão ou token USB</summary><p>Esse tipo (A3) não funciona neste sistema. É necessário o certificado em arquivo (A1). Fale com a ${h(CFG.agfName)} antes de continuar.</p></details>
+  </section>`);
+  root.querySelector("#next").addEventListener("click", () => { S.resuming = false; go("conferir"); });
+  root.querySelector("#resume-start")?.addEventListener("click", () => { S.resuming = true; go("certificado"); });
+}
+
 // ---------- 2. conferir ----------
 function renderReview() {
   const { ready, byService, totalValue } = S.summary;
@@ -181,7 +253,7 @@ function renderReview() {
   const filtered = term ? ready.filter((row) => `${row.document?.recipient?.name} ${row.document?.recipient?.address?.city} ${row.reference}`.toUpperCase().includes(term)) : ready;
   const resumeCount = totalToAuthorize() - S.summary.total;
   frame(`<section class="wz-card">
-    <p class="wz-eyebrow">Etapa 2 de 5</p>
+    <p class="wz-eyebrow">Etapa 2 de 5${lotsMode() ? ` · ${h(lotName(S.lot))}` : ""}</p>
     <h1>Confira o que será autorizado</h1>
     <p class="wz-lead">Estes são os envios que a ${h(CFG.agfName)} preparou. Não é preciso conferir um por um: veja se os totais fazem sentido.</p>
     <div class="wz-metrics">
@@ -257,12 +329,12 @@ function renderConfirm() {
   const name = S.company.name || S.company.profile?.name || "a empresa";
   const total = totalToAuthorize();
   frame(`<section class="wz-card">
-    <p class="wz-eyebrow">Etapa 4 de 5</p>
+    <p class="wz-eyebrow">Etapa 4 de 5${lotsMode() ? ` · ${h(lotName(S.lot))}` : ""}</p>
     <h1>Confirme e autorize</h1>
-    <p class="wz-lead">Serão assinadas e enviadas à SEFAZ <b>${int(total)} declarações</b> em nome de <b>${h(name)}</b>, com o certificado <b>${h(S.cert.info?.commonName || "")}</b>.</p>
+    <p class="wz-lead">Serão assinadas e enviadas à SEFAZ <b>${int(total)} declarações</b>${lotsMode() ? ` do <b>${h(lotName(S.lot))}</b>` : ""} em nome de <b>${h(name)}</b>, com o certificado <b>${h(S.cert.info?.commonName || "")}</b>.</p>
     <label class="wz-check"><input type="checkbox" id="eligibility" ${S.accepted.eligibility ? "checked" : ""}><span><b>${h(name)} não é contribuinte do ICMS</b> e estes envios não exigem nota fiscal. Por isso a DC-e é o documento correto.</span></label>
     ${CFG.environment === "1" ? `<label class="wz-check"><input type="checkbox" id="production" ${S.accepted.production ? "checked" : ""}><span>Entendo que serão emitidos <b>documentos fiscais válidos</b> em produção, com numeração oficial.</span></label>` : ""}
-    <div class="wz-note">${icon.clock}<div>Tempo estimado: <b>${duration(estimateSeconds(total, 0, 0))}</b>. Durante o processo, <b>não feche esta página</b> e não deixe o computador entrar em descanso.</div></div>
+    <div class="wz-note">${icon.clock}<div>Tempo estimado: <b>${estimate(total)}</b>. Durante o processo, <b>não feche esta página</b> e não deixe o computador entrar em descanso.</div></div>
     <div class="wz-actions"><button class="wz-ghost" id="back">Voltar</button><button class="wz-primary" id="start" ${S.accepted.eligibility && (CFG.environment === "2" || S.accepted.production) ? "" : "disabled"}>Autorizar ${int(total)} declarações</button></div>
   </section>`);
   root.querySelector("#eligibility").addEventListener("change", (event) => { S.accepted.eligibility = event.target.checked; renderConfirm(); });
@@ -276,7 +348,7 @@ let wakeLock = null;
 const beforeUnload = (event) => { if (S.running) { event.preventDefault(); event.returnValue = ""; } };
 
 async function startAuthorization() {
-  S.running = true; S.pause = null; S.result = null;
+  S.running = true; S.pause = null; S.result = null; S.runLot = lotName(S.lot);
   S.progress = { stage: "starting", done: 0, expected: totalToAuthorize(), authorized: 0, rejected: 0, errors: 0, elapsedMs: 0 };
   go("autorizar");
   window.addEventListener("beforeunload", beforeUnload);
@@ -324,7 +396,7 @@ async function startAuthorization() {
 function runContent() {
   const p = S.progress || { done: 0, expected: 0 };
   const percent = p.expected ? Math.min(100, Math.round((p.done / p.expected) * 100)) : 0;
-  const eta = estimateSeconds(Math.max(0, p.expected - p.done), p.elapsedMs, p.done);
+  const eta = estimateSeconds(Math.max(0, p.expected - p.done), p.elapsedMs, p.done, PER_DOC_ESTIMATE_MS);
   const label = { starting: "Preparando...", reserving: "Reservando a numeração das próximas declarações...", authorizing: "Assinando e enviando à SEFAZ...", finished: "Finalizando..." }[p.stage] || "Processando...";
   return `<div class="wz-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><i style="width:${percent}%"></i></div>
     <div class="wz-progress-info"><b>${int(p.done)} de ${int(p.expected)}</b><span>${percent}%</span></div>
@@ -334,7 +406,7 @@ function runContent() {
 
 function renderRun() {
   frame(`<section class="wz-card">
-    <p class="wz-eyebrow">Etapa 5 de 5</p>
+    <p class="wz-eyebrow">Etapa 5 de 5${lotsMode() && S.runLot ? ` · ${h(S.runLot)}` : ""}</p>
     <h1>${S.pause ? "Autorização pausada" : "Autorizando as declarações"}</h1>
     ${S.pause ? `<div class="wz-note error">${icon.alert}<div><b>${h(S.pause)}</b> As declarações já autorizadas estão garantidas. Ao continuar, o sistema retoma de onde parou.</div></div>` : '<div class="wz-note warn">' + icon.alert + '<div><b>Não feche esta página</b> e mantenha o computador ligado até o fim.</div></div>'}
     <div id="run">${runContent()}</div>
@@ -375,12 +447,24 @@ function renderDone() {
     <p><b>${int(r.authorized)}</b> ${r.authorized === 1 ? "declaração autorizada" : "declarações autorizadas"} pela SEFAZ.${r.rejected ? ` <b>${int(r.rejected)}</b> ${r.rejected === 1 ? "foi recusada" : "foram recusadas"}.` : ""}${r.errors ? ` <b>${int(r.errors)}</b> ${r.errors === 1 ? "precisa ser enviada" : "precisam ser enviadas"} de novo.` : ""}</p></div>
     ${r.errors ? '<div class="wz-actions center"><button class="wz-primary" id="retry">Enviar de novo as pendentes</button></div>' : ""}
     ${r.rejections.length ? `<h2>Recusadas pela SEFAZ</h2><p class="wz-muted">A ${h(CFG.agfName)} vai corrigir estas e avisar você, se for preciso autorizar de novo.</p><div class="wz-list">${r.rejections.slice(0, 50).map((item) => `<div><b>${h(item.name || item.reference)}</b><em>${h(item.reason)}</em></div>`).join("")}</div>` : ""}
-    <div class="wz-note ok">${icon.shield}<div>${allGood ? `Você já pode fechar esta página. A ${h(CFG.agfName)} cuida da impressão e da postagem.` : `Avise a ${h(CFG.agfName)} que a autorização terminou.`}</div></div>
+    ${nextLotBox(allGood)}
     ${backupButton()}
-    <div class="wz-actions center"><a class="wz-ghost" href="${whatsLink(`Olá! Terminei a autorização das DC-e: ${r.authorized} autorizadas${r.rejected ? `, ${r.rejected} recusadas` : ""}${r.errors ? `, ${r.errors} pendentes` : ""}.`)}" target="_blank" rel="noopener">Avisar a AGF pelo WhatsApp</a></div>
+    <div class="wz-actions center"><a class="wz-ghost" href="${whatsLink(`Olá! Terminei a autorização das DC-e${S.runLot && lotsMode() ? ` (${S.runLot})` : ""}: ${r.authorized} autorizadas${r.rejected ? `, ${r.rejected} recusadas` : ""}${r.errors ? `, ${r.errors} pendentes` : ""}.`)}" target="_blank" rel="noopener">Avisar a AGF pelo WhatsApp</a></div>
   </section>`, { stepper: false });
   root.querySelector("#retry")?.addEventListener("click", startAuthorization);
+  root.querySelector("#next-lot")?.addEventListener("click", () => { S.search = ""; go(S.cert.info ? "confirmar" : "inicio"); });
   bindBackup();
+}
+
+// Fim de um lote: mostra o próximo e permite seguir com o mesmo certificado, sem digitar de novo.
+function nextLotBox(allGood) {
+  const finished = `Você já pode fechar esta página. A ${h(CFG.agfName)} cuida da impressão e da postagem.`;
+  if (!lotsMode()) return `<div class="wz-note ok">${icon.shield}<div>${allGood ? finished : `Avise a ${h(CFG.agfName)} que a autorização terminou.`}</div></div>`;
+  if (!S.lot) return `<div class="wz-note ok">${icon.shield}<div><b>Todos os lotes foram autorizados.</b> ${finished}</div></div>`;
+  if (!allGood) return `<div class="wz-note warn">${icon.alert}<div>Resolva as pendências deste lote antes de seguir. Se precisar, avise a ${h(CFG.agfName)}.</div></div>`;
+  const count = totalToAuthorize();
+  return `<div class="wz-next"><div><span>Próximo lote</span><b>${h(lotName(S.lot))}</b><small>${int(count)} declarações · ${estimate(count)}</small></div><button class="wz-primary" id="next-lot">Autorizar o próximo lote</button></div>
+    <p class="wz-muted center">Prefere continuar outro dia? Pode fechar a página. Ao voltar, a lista mostra onde você parou.</p>`;
 }
 
 // ---------- boot ----------
