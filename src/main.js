@@ -421,7 +421,7 @@ async function downloadHistoryDace(id) {
     const stored = await dataAction("batch.get", { batchId: row.BATCH_ID });
     const document = stored.documents.find((item) => String(item.reference) === String(row.REMITTANCE_ID));
     if (!document) throw new Error("Dados da remessa não encontrados.");
-    const result = { status: "AUTHORIZED", accessKey: row.ACCESS_KEY, protocolNumber: row.PROTOCOL };
+    const result = { status: "AUTHORIZED", accessKey: String(row.ACCESS_KEY || ""), protocolNumber: String(row.PROTOCOL || ""), authorizedAt: String(row.AUTHORIZED_AT || "") };
     const response = await api("/api/dce/dace", { method: "POST", body: JSON.stringify({ entries: [{ document, result }] }) });
     downloadBlob(await response.blob(), `${row.ACCESS_KEY}-DACE.pdf`);
   } catch (error) { toast(error.message, "error"); }

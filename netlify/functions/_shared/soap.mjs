@@ -79,7 +79,7 @@ function findScalar(value, wanted) {
 }
 
 export function parseAuthorizationResponse(soapXml) {
-  const parser = new XMLParser({ ignoreAttributes: false, removeNSPrefix: true, trimValues: true });
+  const parser = new XMLParser({ ignoreAttributes: false, removeNSPrefix: true, trimValues: true, parseTagValue: false });
   let parsed = parser.parse(soapXml);
   const resultText = findScalar(parsed, "dceAutorizacaoResult");
   if (resultText && resultText.trim().startsWith("<")) parsed = parser.parse(resultText);
@@ -112,7 +112,7 @@ export function extractProtocolXml(soapXml) {
 
 
 export function parseServiceResponse(soapXml) {
-  const parser = new XMLParser({ ignoreAttributes: false, removeNSPrefix: true, trimValues: true });
+  const parser = new XMLParser({ ignoreAttributes: false, removeNSPrefix: true, trimValues: true, parseTagValue: false });
   let parsed = parser.parse(soapXml);
   for (const resultName of ["dceStatusServicoResult", "dceConsultaResult", "dceRecepcaoEventoResult"]) {
     const resultText = findScalar(parsed, resultName);

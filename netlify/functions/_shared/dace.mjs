@@ -84,7 +84,7 @@ async function renderPage(pdf, fonts, entry, items, pageNumber, pageCount, conti
 
   box(page, left, y, contentWidth, 38, SOFT);
   text(page, "DATA DE EMISSÃO", left + 8, y - 10, { font: bold, size: 6.5, color: MUTED });
-  text(page, emissionDate(document.identification.emissionDateTime), left + 8, y - 24, { font: regular, size: 8 });
+  text(page, emissionDate(document.identification.emissionDateTime || result.emissionDateTime || result.authorizedAt), left + 8, y - 24, { font: regular, size: 8 });
   text(page, "PROTOCOLO DE AUTORIZAÇÃO", left + 192, y - 10, { font: bold, size: 6.5, color: MUTED });
   text(page, result.protocolNumber || "", left + 192, y - 24, { font: regular, size: 8 });
   text(page, "MODALIDADE", left + 390, y - 10, { font: bold, size: 6.5, color: MUTED });
