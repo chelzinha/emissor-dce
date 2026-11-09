@@ -53,6 +53,15 @@ function sheetRows_(sheet) {
   });
 }
 
+// Grava como texto o que a planilha estragaria se virasse número:
+// fórmulas, sequências longas de dígitos (chave de acesso, CNPJ, protocolo) e códigos com zero à esquerda.
+function protectCellText_(value) {
+  if (typeof value !== 'string') return value;
+  if (value.charAt(0) === '=') return `'${value}`;
+  if (/^\d+$/.test(value) && (value.length >= 12 || (value.length > 1 && value.charAt(0) === '0'))) return `'${value}`;
+  return value;
+}
+
 function appendObjects_(sheetName, records) {
   if (!records.length) return;
   const sheet = getSheet_(sheetName);
@@ -62,7 +71,7 @@ function appendObjects_(sheetName, records) {
       const value = record[header];
       if (value == null) return '';
       const text = typeof value === 'object' ? JSON.stringify(value) : String(value);
-      return text.charAt(0) === '=' ? `'${text}` : text;
+      return protectCellText_(text);
     });
   });
   sheet.getRange(sheet.getLastRow() + 1, 1, values.length, headers.length).setValues(values);
@@ -77,7 +86,7 @@ function updateRow_(sheetName, rowNumber, changes) {
     if (map[key] == null) return;
     const raw = changes[key];
     const value = typeof raw === 'object' ? JSON.stringify(raw) : raw;
-    row[map[key]] = value == null ? '' : value;
+    row[map[key]] = value == null ? '' : protectCellText_(value);
   });
   sheet.getRange(rowNumber, 1, 1, width).setValues([row]);
 }
