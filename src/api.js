@@ -1,6 +1,16 @@
 const CLEANING_REQUEST_CHUNK = 25;
 
-export async function api(path, options = {}) {
+import { refreshSession } from "@netlify/identity";
+
+// O token do Netlify Identity vale 1 hora. Autorizações e importações longas passam disso:
+// renova antes de cada chamada (só troca quando está perto de vencer) e, se mesmo assim vier 401,
+// renova e tenta de novo uma vez.
+async function freshSession() {
+  try { await refreshSession(); } catch { /* sem sessão ou sem rede: a chamada decide */ }
+}
+
+export async function api(path, options = {}, retried = false) {
+  await freshSession();
   const response = await fetch(path, {
     credentials: "include",
     ...options,
@@ -12,6 +22,11 @@ export async function api(path, options = {}) {
     return response;
   }
   const result = await response.json();
+  if (response.status === 401 && !retried) {
+    await freshSession();
+    return api(path, options, true);
+  }
+  if (response.status === 401) throw new Error("Sua sessão expirou. Entre de novo com seu e-mail e senha; nada do que já foi feito se perde.");
   if (!response.ok || result.ok === false) throw new Error(result.error || "Não foi possível concluir a operação");
   return result.data;
 }
