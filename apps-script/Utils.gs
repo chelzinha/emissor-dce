@@ -86,9 +86,10 @@ function updateRow_(sheetName, rowNumber, changes) {
     if (map[key] == null) return;
     const raw = changes[key];
     const value = typeof raw === 'object' ? JSON.stringify(raw) : raw;
-    row[map[key]] = value == null ? '' : protectCellText_(value);
+    row[map[key]] = value == null ? '' : value;
   });
-  sheet.getRange(rowNumber, 1, 1, width).setValues([row]);
+  // A linha inteira é regravada: protege também as células que não mudaram (a chave já gravada, por exemplo).
+  sheet.getRange(rowNumber, 1, 1, width).setValues([row.map(protectCellText_)]);
 }
 
 function findRow_(sheetName, predicate) {
