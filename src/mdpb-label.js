@@ -24,7 +24,9 @@ const SOFT = rgb(0.953, 0.965, 0.98);
 
 export const MDPB_AMBITOS = ["LOCAL", "ESTADUAL", "NACIONAL"];
 export const LABELS_PER_FILE = 500;
-export const LABEL_FORMATS = { A4: "A4_6", THERMAL: "10x15" };
+export const LABEL_FORMATS = { A4: "A4_6", THERMAL: "10x15", THERMAL_FRANKING: "10x15_SC" };
+/** Formatos sem chancela: o porte sai pela máquina de franquear. */
+export const FRANKING_FORMATS = [LABEL_FORMATS.A4, LABEL_FORMATS.THERMAL_FRANKING];
 // A4 com 6 etiquetas (2 x 3, células de 105 x 99 mm). 600 por arquivo = 100 folhas.
 export const A4_PER_SHEET = 6;
 export const A4_PER_FILE = 600;
@@ -513,6 +515,87 @@ export async function createA4LabelsPdf(entries, { cutGuides = true } = {}) {
   return { bytes, report, sheets: Math.ceil(entries.length / A4_PER_SHEET) };
 }
 
+
+// ===================== 10 x 15 sem chancela (máquina de franquear) =====================
+
+/** Etiqueta térmica 100 x 150 mm: destinatário em cima, DACE resumida embaixo. Mesmo conteúdo da A4, sem chancela. */
+function drawThermalFrankingLabel(page, fonts, entry, report) {
+  const W = mm(100);
+  const H = mm(150);
+  const x0 = mm(3);
+  const cw = W - mm(6);
+  const R = x0 + cw;
+  const T = H - mm(3);
+  const write = makeWriter(page, fonts, report);
+  const { bold, regular, mono } = fonts;
+  const dest = entry.recipient || {};
+  const destAddress = dest.address || {};
+
+  // Destinatário + CEPNet
+  page.drawRectangle({ x: x0, y: T - mm(5), width: mm(30), height: mm(5), color: BLACK });
+  write("DESTINATÁRIO", x0 + mm(2), T - mm(3.6), { font: bold, size: 8.5, color: WHITE });
+  const box = { top: T - mm(5), bottom: T - mm(40) };
+  page.drawRectangle({ x: x0, y: box.bottom, width: cw, height: box.top - box.bottom, borderColor: BLACK, borderWidth: 1 });
+  const inner = cw - mm(6);
+  write(upper(dest.name), x0 + mm(3), box.top - mm(6.4), { font: bold, size: 11.5, maxWidth: inner, minSize: 8 });
+  write(streetLine(destAddress), x0 + mm(3), box.top - mm(11.8), { size: 10.5, maxWidth: inner, minSize: 7.5 });
+  write(upper(destAddress.district), x0 + mm(3), box.top - mm(16.8), { size: 10.5, maxWidth: inner, minSize: 7.5 });
+  write(formatCep(destAddress.zip), x0 + mm(3), box.top - mm(23), { font: bold, size: 12.5 });
+  write(`${upper(destAddress.city)} / ${upper(destAddress.uf)}`, x0 + mm(30), box.top - mm(23), { size: 10.5, maxWidth: cw - mm(33), minSize: 7.5 });
+  drawCepnet(page, x0 + mm(3), box.bottom + mm(2.5), destAddress.zip);
+
+  // Linha tracejada + faixa da DACE resumida
+  const sep = box.bottom - mm(3);
+  page.drawLine({ start: { x: x0, y: sep }, end: { x: R, y: sep }, thickness: 0.6, color: BLACK, dashArray: [3, 2] });
+  const band = sep - mm(2);
+  page.drawRectangle({ x: x0, y: band - mm(4.6), width: cw, height: mm(4.6), color: GREY_BAND });
+  write("DACE RESUMIDA - DECLARAÇÃO AUXILIAR DE CONTEÚDO ELETRÔNICA", x0 + cw / 2, band - mm(3.2), { font: bold, size: 7, align: "center", maxWidth: cw - mm(2), minSize: 5.5 });
+
+  // Campos da DACE em largura total
+  let y = band - mm(8.2);
+  daceRows(entry).forEach((row) => {
+    if (row === null) { y -= mm(1.4); return; }
+    write(row, x0 + cw / 2, y, { size: 6.6, align: "center", maxWidth: cw, minSize: 5 });
+    y -= mm(3.15);
+  });
+
+  // QR Code + avisos legais ao lado
+  const qs = mm(25);
+  const qTop = y - mm(0.5);
+  drawQr(page, qrCodeUrl(entry.accessKey, entry.environment), x0, qTop - qs, qs);
+  const legalX = x0 + qs + mm(2.5);
+  const legalWidth = R - legalX;
+  const legalSize = 5;
+  const legal = wrapText(regular, fonts.safeRegular(LEGAL_TEXT), legalSize, legalWidth);
+  let ly = qTop - mm(3);
+  legal.forEach((line) => { page.drawText(line, { x: legalX, y: ly, size: legalSize, font: regular, color: BLACK }); ly -= mm(2.05); });
+
+  // Chave de acesso
+  write("CHAVE DE ACESSO DC-e", W / 2, mm(9.2), { font: bold, size: 7, align: "center" });
+  write(formatAccessKey(entry.accessKey), W / 2, mm(4.8), { font: mono, size: 8.4, align: "center", maxWidth: cw, minSize: 6.5 });
+
+  if (entry.environment !== "1") {
+    page.drawText("HOMOLOGAÇÃO - SEM VALOR FISCAL", { x: mm(14), y: mm(30), size: 15, font: bold, color: rgb(0.9, 0.3, 0.24), opacity: 0.35, rotate: degrees(56) });
+  }
+  return { bottomOfText: Math.min(ly, qTop - qs) };
+}
+
+/** Gera o PDF de etiquetas 10 x 15 sem chancela (uma por página). */
+export async function createThermalFrankingLabelsPdf(entries) {
+  if (!entries?.length) throw new Error("Nenhuma etiqueta para gerar.");
+  const pdf = await PDFDocument.create();
+  pdf.setTitle(`Etiquetas 10x15 MDPB ${entries[0].ambito}`);
+  pdf.setAuthor("DC-e Fácil - AGF José Bonifácio");
+  const fonts = await embedFonts(pdf);
+  const report = { cut: 0, overflow: 0 };
+  entries.forEach((entry) => {
+    const { bottomOfText } = drawThermalFrankingLabel(pdf.addPage(LABEL_SIZE), fonts, entry, report);
+    if (bottomOfText < mm(12)) report.overflow += 1;
+  });
+  const bytes = await pdf.save({ useObjectStreams: true });
+  return { bytes, report };
+}
+
 // ===================== Lista de postagem (A4) =====================
 
 /** Linhas por folha; a última folha sempre guarda espaço para total e assinaturas. */
@@ -533,7 +616,7 @@ export function postingListPlan(total, firstRows, nextRows, closingRows) {
 export async function createPostingListPdf(entries, config, { generatedAt = new Date() } = {}) {
   const weightOk = Number(config?.weightGrams) > 0 && Number(config?.weightGrams) <= 500;
   if (!weightOk) throw new Error("Peso unitário deve estar entre 1 e 500 g.");
-  const franking = config.format === LABEL_FORMATS.A4;
+  const franking = FRANKING_FORMATS.includes(config.format);
   if (!entries?.length) throw new Error("Nenhum objeto para listar.");
   const pdf = await PDFDocument.create();
   const fonts = await embedFonts(pdf);

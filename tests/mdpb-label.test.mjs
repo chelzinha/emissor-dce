@@ -154,3 +154,17 @@ test("lista de postagem do formato A4 não exige contrato", async () => {
   assert.equal((await PDFDocument.load(bytes)).getPageCount(), 1);
   await assert.rejects(createPostingListPdf(entries, { format: "A4_6", weightGrams: "0" }), /Peso/);
 });
+
+test("10 x 15 sem chancela: uma página 100 x 150 mm por objeto, sem exigir contrato", async () => {
+  const { createThermalFrankingLabelsPdf, FRANKING_FORMATS } = await import("../src/mdpb-label.js");
+  const { entries } = buildLabelEntries(fixture());
+  const { bytes, report } = await createThermalFrankingLabelsPdf(entries);
+  const pdf = await PDFDocument.load(bytes);
+  assert.equal(pdf.getPageCount(), entries.length);
+  const { width, height } = pdf.getPage(0).getSize();
+  assert.ok(Math.abs(width - LABEL_SIZE[0]) < 0.01 && Math.abs(height - LABEL_SIZE[1]) < 0.01);
+  assert.equal(report.overflow, 0);
+  assert.ok(FRANKING_FORMATS.includes("10x15_SC"));
+  const list = await createPostingListPdf(entries.filter((e) => e.ambito === "LOCAL"), { format: "10x15_SC", weightGrams: "100" });
+  assert.equal((await PDFDocument.load(list)).getPageCount(), 1);
+});

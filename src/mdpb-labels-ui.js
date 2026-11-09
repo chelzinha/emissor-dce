@@ -1,5 +1,5 @@
 // Tela "Etiquetas": gera as etiquetas da MDPB com DACE resumida em dois formatos:
-// A4 com 6 por folha (franqueamento por máquina de franquear, sem chancela) ou 10 x 15 com chancela,
+// A4 com 6 por folha ou 10 x 15 térmica (franqueamento por máquina de franquear, sem chancela) ou 10 x 15 com chancela,
 // a lista de postagem por âmbito e o CSV de conferência, direto das DC-e autorizadas.
 // Não usa o Portal Postal. Somente leitura no backend (batches.list, dce.list, batch.get).
 
@@ -8,6 +8,7 @@ import "./mdpb-labels.css";
 const STORAGE_PREFIX = "dce-facil:chancela:";
 const FORMATS = {
   A4_6: { title: "A4 - 6 por folha", text: "Máquina de franquear. Destinatário e DACE resumida, sem chancela.", fields: ["weightGrams"] },
+  "10x15_SC": { title: "10 x 15 sem chancela", text: "Máquina de franquear. Etiqueta térmica com destinatário e DACE resumida.", fields: ["weightGrams"] },
   "10x15": { title: "10 x 15 com chancela", text: "Etiqueta térmica com a chancela aprovada do contrato.", fields: null },
 };
 const CONFIG_FIELDS = [
@@ -76,6 +77,8 @@ export function createLabelsView({ shell, h, toast, setBusy, dataAction, downloa
     return FORMATS[config?.format] ? config.format : "A4_6";
   }
 
+  const isFranking = (format = formatOf()) => format === "A4_6" || format === "10x15_SC";
+
   function formatTemplate(config) {
     const current = formatOf(config);
     return `<div class="lb-formats">${Object.entries(FORMATS).map(([key, item]) => `<label class="lb-format ${key === current ? "is-on" : ""}"><input type="radio" name="format" value="${key}" ${key === current ? "checked" : ""}><span><b>${h(item.title)}</b><small>${h(item.text)}</small></span></label>`).join("")}</div>`;
@@ -98,10 +101,13 @@ export function createLabelsView({ shell, h, toast, setBusy, dataAction, downloa
     ].filter(Boolean);
     const homolog = result.entries.some((entry) => entry.environment !== "1");
     const a4 = formatOf() === "A4_6";
+    const thermalFranking = formatOf() === "10x15_SC";
     const groups = result.groups.map((group) => `<div class="lb-group"><div class="lb-group-head"><div><p class="eyebrow">ÂMBITO</p><h3>${h(group.ambito)}</h3></div><strong>${group.entries.length.toLocaleString("pt-BR")} objetos</strong></div><div class="lb-actions">${group.parts.map((part) => `<button class="primary" data-labels="${h(group.ambito)}" data-part="${part.index}">Etiquetas${part.total > 1 ? ` parte ${part.index}/${part.total}` : ""}<small>${(part.start + 1).toLocaleString("pt-BR")} a ${(part.start + part.entries.length).toLocaleString("pt-BR")}${a4 ? ` · ${Math.ceil(part.entries.length / 6)} folhas` : ""}</small></button>`).join("")}<button class="secondary" data-list="${h(group.ambito)}">Lista de postagem<small>${group.entries.length.toLocaleString("pt-BR")} linhas</small></button></div>${view.cut[group.ambito] ? `<p class="lb-warn">${view.cut[group.ambito]} linha(s) de texto foram encurtadas para caber. Confira no CSV de conferência.</p>` : ""}</div>`).join("");
     const printText = a4
       ? "Folha A4 em escala 100% (tamanho real, sem \"ajustar à página\"), preto. Serve em folha lisa para recortar nas linhas tracejadas ou em folha adesiva A4 com 6 etiquetas (2 x 3, até 99 x 93 mm). Cole a etiqueta sem cobrir a área da máquina de franquear, no canto superior direito do envelope."
-      : "Etiqueta térmica 100 x 150 mm, escala 100% (sem \"ajustar à página\"), preto, mínimo 300 dpi.";
+      : thermalFranking
+        ? "Etiqueta térmica adesiva 100 x 150 mm, escala 100% (sem \"ajustar à página\"), preto, mínimo 300 dpi. Cole a etiqueta sem cobrir a área da máquina de franquear, no canto superior direito do envelope."
+        : "Etiqueta térmica 100 x 150 mm, escala 100% (sem \"ajustar à página\"), preto, mínimo 300 dpi.";
     return `<section class="card lb-result"><div class="section-title"><div><h2>${result.entries.length.toLocaleString("pt-BR")} etiquetas prontas</h2><p>Ordem por âmbito e CEP crescente. A lista de postagem segue a mesma ordem.</p></div><button class="ghost" id="lb-csv">CSV de conferência</button></div>${homolog ? '<p class="lb-warn strong">Há DC-e de homologação: essas etiquetas saem com a marca "HOMOLOGAÇÃO - SEM VALOR FISCAL" e não servem para postagem.</p>' : ""}${notes.length ? `<p class="lb-note">${h(notes.join(" · "))}</p>` : ""}<div class="lb-groups">${groups}</div><div class="lb-print"><b>Impressão</b><span>${printText} Separe os objetos por âmbito e entregue cada lote com a sua lista de postagem.</span></div></section>`;
   }
 
@@ -109,7 +115,7 @@ export function createLabelsView({ shell, h, toast, setBusy, dataAction, downloa
     const config = view.config || {};
     shell(`<div class="page-head"><div><p class="eyebrow">POSTAGEM</p><h1>Etiquetas MDPB</h1><p>Etiquetas com destinatário e DACE resumida, geradas a partir das DC-e autorizadas. Sem Portal Postal.</p></div><span class="status-chip">${view.result ? `${view.result.entries.length} etiquetas` : "Selecione os lotes"}</span></div>
       <section class="card"><div class="section-title"><div><h2>1. Lotes autorizados</h2><p>Marque os lotes que entram nesta postagem.</p></div><div class="button-row"><button class="ghost" id="lb-all">Marcar produção</button><button class="ghost" id="lb-reload">Atualizar</button></div></div><div class="lb-batches">${batchesTemplate()}</div></section>
-      <form class="card lb-config" id="lb-config"><div class="section-title"><div><h2>2. Formato</h2><p>${formatOf(config) === "A4_6" ? "O peso entra só na lista de postagem." : "Contrato aprovado pelos Correios."} Fica salvo neste navegador para o CNPJ ${h(issuer().cnpj || "")}.</p></div></div>${formatTemplate(config)}<div class="form-grid">${configTemplate(config)}</div><div class="form-actions"><button class="primary" type="submit">Montar etiquetas</button></div></form>
+      <form class="card lb-config" id="lb-config"><div class="section-title"><div><h2>2. Formato</h2><p>${isFranking(formatOf(config)) ? "O peso entra só na lista de postagem." : "Contrato aprovado pelos Correios."} Fica salvo neste navegador para o CNPJ ${h(issuer().cnpj || "")}.</p></div></div>${formatTemplate(config)}<div class="form-grid">${configTemplate(config)}</div><div class="form-actions"><button class="primary" type="submit">Montar etiquetas</button></div></form>
       ${resultTemplate()}`);
     bind();
   }
@@ -168,7 +174,7 @@ export function createLabelsView({ shell, h, toast, setBusy, dataAction, downloa
     config.dr = String(config.dr || "").toUpperCase().replace(/^DR\/?/, "");
     config.sigla = String(config.sigla || "").toUpperCase();
     const weight = Number(config.weightGrams);
-    const errors = config.format === "A4_6"
+    const errors = isFranking(config.format)
       ? (Number.isFinite(weight) && weight > 0 && weight <= 500 ? [] : ["Peso unitário deve estar entre 1 e 500 g."])
       : m.validateChancelaConfig(config);
     if (errors.length) { toast(errors.join(" "), "error"); return; }
@@ -213,11 +219,15 @@ export function createLabelsView({ shell, h, toast, setBusy, dataAction, downloa
     try {
       const m = await lib();
       await new Promise((resolve) => setTimeout(resolve, 30));
-      const a4 = formatOf() === "A4_6";
-      const { bytes, report } = a4 ? await m.createA4LabelsPdf(part.entries) : await m.createLabelsPdf(part.entries, view.config, await logo());
+      const format = formatOf();
+      const a4 = format === "A4_6";
+      const { bytes, report } = a4 ? await m.createA4LabelsPdf(part.entries)
+        : format === "10x15_SC" ? await m.createThermalFrankingLabelsPdf(part.entries)
+        : await m.createLabelsPdf(part.entries, view.config, await logo());
+      const tag = a4 ? "A4" : format === "10x15_SC" ? "10x15_SEM_CHANCELA" : "10x15";
       if (report.cut) view.cut[ambito] = (view.cut[ambito] || 0) + report.cut;
       const suffix = part.total > 1 ? `_parte${part.index}de${part.total}` : "";
-      downloadBlob(new Blob([bytes], { type: "application/pdf" }), `ETIQUETAS_${a4 ? "A4" : "10x15"}_MDPB_${fileTag()}_${ambito}${suffix}_${stamp()}.pdf`);
+      downloadBlob(new Blob([bytes], { type: "application/pdf" }), `ETIQUETAS_${tag}_MDPB_${fileTag()}_${ambito}${suffix}_${stamp()}.pdf`);
       toast(`Etiquetas ${ambito}${suffix ? ` parte ${part.index}` : ""} geradas.`, "success");
     } catch (error) { toast(error?.message || String(error), "error"); }
     finally { setBusy(false); render(); }
