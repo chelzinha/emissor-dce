@@ -116,7 +116,8 @@ export function buildLots(remittances = [], imports = []) {
     return a.round - b.round || (ia < 0 ? 9 : ia) - (ib < 0 ? 9 : ib) || a.number - b.number || a.createdAt.localeCompare(b.createdAt);
   });
   lots.forEach((lot) => { lot.state = lot.open ? "open" : "done"; });
-  const current = lots.find((lot) => lot.open) || null;
+  // Um lote já iniciado (declarações reservadas ou com erro) tem prioridade: é ele que a retomada termina.
+  const current = lots.find((lot) => lot.open > lot.ready) || lots.find((lot) => lot.open) || null;
   if (current) current.state = "current";
   lots.forEach((lot, index) => { lot.position = index + 1; });
   return { lots, current };

@@ -262,3 +262,11 @@ test("rodadas: arquivos _R2_ vêm depois de toda a rodada 1", async () => {
   assert.deepEqual(lots.map((lot) => lot.id), ["r1l1", "r1n1", "r2l1"]);
   assert.equal(current.id, "r1l1");
 });
+
+test("lote iniciado fora da ordem continua sendo o atual até terminar", async () => {
+  const { buildLots } = await import("../src/authorize-engine.js");
+  const imports = [{ ID: "r1n3", FILE_NAME: "DCE_AABNB_NACIONAL_LOTE_03_100.csv" }, { ID: "r2l1", FILE_NAME: "DCE_AABNB_R2_LOCAL_LOTE_01_100.csv" }];
+  const rows = [{ id: "1", importId: "r1n3", status: "READY" }, { id: "2", importId: "r2l1", status: "RESERVED" }, { id: "3", importId: "r2l1", status: "AUTHORIZED" }];
+  const { current } = buildLots(rows, imports);
+  assert.equal(current.id, "r2l1");
+});
