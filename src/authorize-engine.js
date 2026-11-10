@@ -67,12 +67,21 @@ export const PER_DOC_ESTIMATE_MS = 10000;
 const AMBITO_ORDER = ["LOCAL", "ESTADUAL", "NACIONAL"];
 const OPEN_STATUS = ["READY", "RESERVED", "ERROR"];
 
-function lotNameParts(fileName = "", services = []) {
+export function lotNameParts(fileName = "", services = []) {
   const name = String(fileName || "").toUpperCase();
   const fromName = AMBITO_ORDER.find((ambito) => name.includes(ambito));
   const fromService = AMBITO_ORDER.find((ambito) => services.some((service) => String(service || "").toUpperCase().includes(ambito)));
   const match = name.match(/LOTE[_\s-]*(\d+)/);
-  return { ambito: fromName || fromService || "", number: match ? Number(match[1]) : 0 };
+  // Rodada: "..._R2_..." no nome do arquivo. Arquivos sem marcação são da rodada 1.
+  const round = name.match(/(?:^|[_\s-])R(\d+)(?=[_\s-])/);
+  return { ambito: fromName || fromService || "", number: match ? Number(match[1]) : 0, round: round ? Number(round[1]) : 1 };
+}
+
+/** Nome curto de um lote a partir do arquivo importado: "LOTE 02", "Lote de teste" ou o próprio arquivo. */
+export function lotLabel(fileName = "", number = 0) {
+  if (number) return `Lote ${String(number).padStart(2, "0")}`;
+  if (/TESTE/i.test(fileName)) return "Lote de teste";
+  return String(fileName || "").replace(/\.[a-z0-9]+$/i, "") || "Lote";
 }
 
 /**
@@ -91,20 +100,20 @@ export function buildLots(remittances = [], imports = []) {
   const lots = [...groups.entries()].map(([id, rows]) => {
     const info = importsById.get(id) || {};
     const fileName = String(info.FILE_NAME || "");
-    const { ambito, number } = lotNameParts(fileName, rows.map((row) => row.service));
+    const { ambito, number, round } = lotNameParts(fileName, rows.map((row) => row.service));
     const count = (statuses) => rows.filter((row) => statuses.includes(String(row.status))).length;
     const ready = count(["READY"]);
     const open = count(OPEN_STATUS);
     return {
-      id, fileName, ambito, number, createdAt: String(info.CREATED_AT || ""),
-      label: number ? `Lote ${String(number).padStart(2, "0")}` : /TESTE/i.test(fileName) ? "Lote de teste" : (fileName.replace(/\.[a-z0-9]+$/i, "") || "Lote"),
+      id, fileName, ambito, number, round, createdAt: String(info.CREATED_AT || ""),
+      label: lotLabel(fileName, number),
       total: rows.length, ready, open, authorized: count(["AUTHORIZED"]), pendingFix: count(["INVALID", "REJECTED"]),
       readyRows: rows.filter((row) => row.status === "READY"),
     };
   }).filter((lot) => lot.authorized + lot.open > 0);
   lots.sort((a, b) => {
     const ia = AMBITO_ORDER.indexOf(a.ambito); const ib = AMBITO_ORDER.indexOf(b.ambito);
-    return (ia < 0 ? 9 : ia) - (ib < 0 ? 9 : ib) || a.number - b.number || a.createdAt.localeCompare(b.createdAt);
+    return a.round - b.round || (ia < 0 ? 9 : ia) - (ib < 0 ? 9 : ib) || a.number - b.number || a.createdAt.localeCompare(b.createdAt);
   });
   lots.forEach((lot) => { lot.state = lot.open ? "open" : "done"; });
   const current = lots.find((lot) => lot.open) || null;

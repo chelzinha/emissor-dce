@@ -28,7 +28,8 @@ const cnpjMask = (value) => cnpjDigits(value).replace(/^(\d{2})(\d{3})(\d{3})(\d
 const dateBr = (value) => (value ? new Date(value).toLocaleDateString("pt-BR") : "");
 const whatsLink = (text) => `https://wa.me/${CFG.agfWhatsApp}?text=${encodeURIComponent(text)}`;
 const lotsMode = () => S.lots.length > 1;
-const lotName = (lot) => (lot ? [lot.ambito, lot.label].filter(Boolean).join(" · ") : "");
+const multiRound = () => new Set(S.lots.map((lot) => lot.round)).size > 1;
+const lotName = (lot) => (lot ? [multiRound() ? `Rodada ${lot.round}` : "", lot.ambito, lot.label].filter(Boolean).join(" · ") : "");
 const estimate = (count) => duration(estimateSeconds(count, 0, 0, PER_DOC_ESTIMATE_MS));
 const capitalize = (text) => text.charAt(0).toUpperCase() + text.slice(1);
 const totalToAuthorize = () => (S.summary?.total || 0) + S.pending.reduce((sum, batch) => sum + Number(batch.TOTAL || 0) - Number(batch.AUTHORIZED || 0) - Number(batch.REJECTED || 0), 0);
@@ -194,14 +195,17 @@ function lotChip(lot) {
 }
 
 function lotsGroups() {
-  const order = [...new Set(S.lots.map((lot) => lot.ambito || "OUTROS"))];
-  return order.map((ambito) => {
-    const lots = S.lots.filter((lot) => (lot.ambito || "OUTROS") === ambito);
+  const keyOf = (lot) => `${lot.round}|${lot.ambito || "OUTROS"}`;
+  const order = [...new Set(S.lots.map(keyOf))];
+  return order.map((key) => {
+    const lots = S.lots.filter((lot) => keyOf(lot) === key);
+    const ambito = lots[0].ambito || "OUTROS";
+    const title = `${multiRound() ? `Rodada ${lots[0].round} · ` : ""}${ambito === "OUTROS" ? "Outros" : ambito}`;
     const doneLots = lots.filter((lot) => lot.state === "done").length;
     const declarations = lots.reduce((sum, lot) => sum + lot.authorized + lot.open, 0);
     const authorized = lots.reduce((sum, lot) => sum + lot.authorized, 0);
     const hasCurrent = lots.some((lot) => lot.state === "current");
-    return `<details class="wz-lotgroup" ${hasCurrent ? "open" : ""}><summary><b>${h(ambito === "OUTROS" ? "Outros" : ambito)}</b><span>${int(doneLots)} de ${int(lots.length)} lotes · ${int(authorized)} de ${int(declarations)} declarações</span></summary>
+    return `<details class="wz-lotgroup" ${hasCurrent ? "open" : ""}><summary><b>${h(title)}</b><span>${int(doneLots)} de ${int(lots.length)} lotes · ${int(authorized)} de ${int(declarations)} declarações</span></summary>
       <ol class="wz-lots">${lots.map((lot) => `<li class="is-${lot.state}"><i>${lot.state === "done" ? icon.check : (lot.number || "•")}</i><div><b>${h(lot.label)}</b><span>${int(lot.authorized + lot.open)} declarações${lot.state === "done" ? "" : ` · ${estimate(lot.open)}`}</span></div>${lotChip(lot)}</li>`).join("")}</ol></details>`;
   }).join("");
 }

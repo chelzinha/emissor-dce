@@ -4,6 +4,7 @@
 // Não usa o Portal Postal. Somente leitura no backend (batches.list, dce.list, batch.get).
 
 import "./mdpb-labels.css";
+import { lotLabel, lotNameParts } from "./authorize-engine.js";
 
 const STORAGE_PREFIX = "dce-facil:chancela:";
 const FORMATS = {
@@ -45,7 +46,7 @@ function writeStored(cnpj, config) {
 }
 
 export function createLabelsView({ shell, h, toast, setBusy, dataAction, downloadBlob, getState }) {
-  const view = { batches: [], dceRows: [], selected: new Set(), result: null, config: null, loadedAt: null, cut: {} };
+  const view = { batches: [], dceRows: [], selected: new Set(), result: null, config: null, loadedAt: null, cut: {}, batchNames: {} };
   const app = () => document.querySelector("#app");
 
   function issuer() {
@@ -68,7 +69,7 @@ export function createLabelsView({ shell, h, toast, setBusy, dataAction, downloa
     const rows = view.batches.map((batch) => {
       const count = authorizedCount(batch.ID);
       const production = String(batch.ENVIRONMENT) === "1";
-      return `<label class="lb-batch ${view.selected.has(String(batch.ID)) ? "is-on" : ""}"><input type="checkbox" data-batch="${h(batch.ID)}" ${view.selected.has(String(batch.ID)) ? "checked" : ""}><span><b>${h(String(batch.CREATED_AT || "").slice(0, 16).replace("T", " "))}</b><small>${h(batch.ID)}</small></span><span class="status-chip ${production ? "ok" : ""}">${production ? "Produção" : "Homologação"}</span><strong>${count.toLocaleString("pt-BR")} autorizadas</strong></label>`;
+      return `<label class="lb-batch ${view.selected.has(String(batch.ID)) ? "is-on" : ""}"><input type="checkbox" data-batch="${h(batch.ID)}" ${view.selected.has(String(batch.ID)) ? "checked" : ""}><span><b>${h(view.batchNames[String(batch.ID)] || String(batch.CREATED_AT || "").slice(0, 16).replace("T", " "))}</b><small>${h(String(batch.CREATED_AT || "").slice(0, 16).replace("T", " "))} · ${h(batch.ID)}</small></span><span class="status-chip ${production ? "ok" : ""}">${production ? "Produção" : "Homologação"}</span><strong>${count.toLocaleString("pt-BR")} autorizadas</strong></label>`;
     }).join("");
     return rows || '<div class="empty small"><b>Nenhum lote com DC-e autorizada</b><span>Autorize as DC-e primeiro (Emitir ou /autorizar).</span></div>';
   }
@@ -149,6 +150,22 @@ export function createLabelsView({ shell, h, toast, setBusy, dataAction, downloa
     view.selected = new Set(view.batches.filter((batch) => String(batch.ENVIRONMENT) === "1" && authorizedCount(batch.ID) > 0).map((batch) => String(batch.ID)));
   }
 
+  // Nome do lote (arquivo importado) de cada autorização: "Rodada 2 · LOCAL · Lote 03".
+  function batchNamesFrom(dceRows, remittances, imports) {
+    const importOf = new Map((Array.isArray(remittances) ? remittances : []).map((row) => [String(row.id), String(row.importId || "")]));
+    const files = new Map((Array.isArray(imports) ? imports : []).map((row) => [String(row.ID), String(row.FILE_NAME || "")]));
+    const names = {};
+    dceRows.forEach((row) => {
+      const batchId = String(row.BATCH_ID);
+      if (names[batchId]) return;
+      const file = files.get(importOf.get(String(row.REMITTANCE_ID)) || "");
+      if (!file) return;
+      const { ambito, number, round } = lotNameParts(file);
+      names[batchId] = [`Rodada ${round}`, ambito, lotLabel(file, number)].filter(Boolean).join(" · ");
+    });
+    return names;
+  }
+
   if (typeof window !== "undefined") window.addEventListener("dce-data-changed", () => { view.loadedAt = null; });
 
   async function open(reload = false) {
@@ -156,9 +173,13 @@ export function createLabelsView({ shell, h, toast, setBusy, dataAction, downloa
     if (reload || !view.loadedAt || Date.now() - view.loadedAt > 60_000) {
       setBusy(true, "Lendo lotes autorizados…");
       try {
-        const [batches, dceRows] = await Promise.all([dataAction("batches.list", {}), dataAction("dce.list", {})]);
+        const [batches, dceRows, remittances, imports] = await Promise.all([
+          dataAction("batches.list", {}), dataAction("dce.list", {}),
+          dataAction("remittances.list", {}).catch(() => []), dataAction("imports.list", {}).catch(() => []),
+        ]);
         view.dceRows = Array.isArray(dceRows) ? dceRows : [];
         view.batches = (Array.isArray(batches) ? batches : []).filter((batch) => authorizedCount(batch.ID) > 0);
+        view.batchNames = batchNamesFrom(view.dceRows, remittances, imports);
         view.loadedAt = Date.now();
         view.result = null;
         selectProduction();

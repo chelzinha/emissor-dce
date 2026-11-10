@@ -247,3 +247,18 @@ test("lote interrompido (reservado ou com erro) continua sendo o lote atual", as
   assert.equal(current.id, "l1");
   assert.equal(current.ready, 0);
 });
+
+test("rodadas: arquivos _R2_ vêm depois de toda a rodada 1", async () => {
+  const { buildLots, lotNameParts } = await import("../src/authorize-engine.js");
+  assert.deepEqual(lotNameParts("DCE_AABNB_R2_LOCAL_LOTE_03_100.csv"), { ambito: "LOCAL", number: 3, round: 2 });
+  assert.equal(lotNameParts("DCE_AABNB_NACIONAL_LOTE_19_81.csv").round, 1);
+  const imports = [
+    { ID: "r2l1", FILE_NAME: "DCE_AABNB_R2_LOCAL_LOTE_01_100.csv" },
+    { ID: "r1n1", FILE_NAME: "DCE_AABNB_NACIONAL_LOTE_01_100.csv" },
+    { ID: "r1l1", FILE_NAME: "DCE_AABNB_LOCAL_LOTE_01_90.csv" },
+  ];
+  const rows = ["r2l1", "r1n1", "r1l1"].map((importId, i) => ({ id: String(i), importId, status: "READY" }));
+  const { lots, current } = buildLots(rows, imports);
+  assert.deepEqual(lots.map((lot) => lot.id), ["r1l1", "r1n1", "r2l1"]);
+  assert.equal(current.id, "r1l1");
+});
