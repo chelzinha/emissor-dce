@@ -62,8 +62,8 @@ export function summarizeReady(remittances = []) {
 }
 
 // ---------- Lotes (cada arquivo importado pela AGF é um lote) ----------
-// Ritmo medido em produção (assinatura + SEFAZ + gravação dos XML no Drive): cerca de 7 s por declaração.
-export const PER_DOC_ESTIMATE_MS = 7000;
+// Ritmo medido em produção nos lotes do AABNB (assinatura + SEFAZ + XML no Drive): 16 a 19 min por 100, cerca de 10 s por declaração.
+export const PER_DOC_ESTIMATE_MS = 10000;
 const AMBITO_ORDER = ["LOCAL", "ESTADUAL", "NACIONAL"];
 const OPEN_STATUS = ["READY", "RESERVED", "ERROR"];
 
